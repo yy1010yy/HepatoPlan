@@ -81,3 +81,7 @@ The result contains full-precision volumes in millilitres, percentages, and tumo
 Pass the full index URL to `loadCaseIndex`, then pass the returned catalog and a case ID to `loadCaseBundle`. Both functions in `src/case-loader.ts` accept an optional abort signal. A rejected load can be retried by calling the same function again.
 
 Pass the bundle's metadata and label buffer to `startVolumetryWorker` with a new selection token. Keep the decoded liver and tumour meshes for rendering. The startup call transfers the label buffer. Wait for `ready` before sending an `evaluate` message, and use the echoed selection token and revision to identify the response. The browser bundler needs to compile the module worker referenced by `startVolumetryWorker`.
+
+For interactive use, create a `CaseController` with the loaded catalog and subscribe to its state. Call `selectCase` and wait for the ready state before rendering the selected case. Call `setPlane` to update the viewer and queue a calculation. The default plane passes through the liver bounds centre. Use the optional `releaseMeshes` callback to dispose of renderer-owned geometry when the controller releases a case, and call `dispose` when leaving the workspace.
+
+Pass the current state to `measurementPanel` for formatted rows and the save flag. Use `retry` on the controller for a failed load or calculation. On a crash, the controller reloads the worker and reuses the current plane. If the replacement crashes before returning a current result, the controller exposes a retryable case error.
