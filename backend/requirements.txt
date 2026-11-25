@@ -1,0 +1,5 @@
+nibabel>=5.3,<6
+numpy>=2,<3
+scikit-image>=0.25,<0.27
+trimesh>=4.6,<5
+jsonschema>=4.23,<5

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "releaseId": "fixture-v1",
+  "caseId": "case-001",
+  "dimensions": [
+    3,
+    4,
+    5
+  ],
+  "voxelSpacingMm": [
+    2,
+    3,
+    4
+  ],
+  "voxelToWorldMm": [
+    [
+      -2,
+      0,
+      0,
+      10
+    ],
+    [
+      0,
+      3,
+      0,
+      -5
+    ],
+    [
+      0,
+      0,
+      4,
+      8
+    ],
+    [
+      0,
+      0,
+      0,
+      1
+    ]
+  ],
+  "labelCounts": {
+    "parenchyma": 14,
+    "tumour": 3
+  }
+}

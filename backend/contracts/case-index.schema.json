@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "HepatoPlan case index v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "releaseId",
+    "cases"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "releaseId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+(?![\\s\\S])"
+    },
+    "cases": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "required": [
+          "caseId"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+(?![\\s\\S])"
+          }
+        }
+      }
+    }
+  }
+}

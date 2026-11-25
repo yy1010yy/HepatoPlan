@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "releaseId": "fixture-v1",
+  "cases": [
+    {
+      "caseId": "case-001"
+    }
+  ]
+}
