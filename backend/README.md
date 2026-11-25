@@ -75,3 +75,9 @@ The local preview serves `cases/index.json` with `Cache-Control: no-cache` and v
 Create a `PreparedCase` from `src/volumetry.ts` with a case's metadata and `Uint8Array` label buffer. It takes a private snapshot once. Call `evaluate(plane)` on the same case whenever the plane changes. A plane has a point in millimetres, a normal, and a removal side, as defined in `src/plane.ts`.
 
 The result contains full-precision volumes in millilitres, percentages, and tumour contact and distance in millimetres. `npm test` exercises the engine with synthetic masks, including oblique cuts and cases where the cut passes between disconnected tumour regions.
+
+## Load a case in the browser
+
+Pass the full index URL to `loadCaseIndex`, then pass the returned catalog and a case ID to `loadCaseBundle`. Both functions in `src/case-loader.ts` accept an optional abort signal. A rejected load can be retried by calling the same function again.
+
+Pass the bundle's metadata and label buffer to `startVolumetryWorker` with a new selection token. Keep the decoded liver and tumour meshes for rendering. The startup call transfers the label buffer. Wait for `ready` before sending an `evaluate` message, and use the echoed selection token and revision to identify the response. The browser bundler needs to compile the module worker referenced by `startVolumetryWorker`.
