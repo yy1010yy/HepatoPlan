@@ -45,3 +45,15 @@ Create a local `selection.json` mapping public case IDs to source filename stems
 ```
 
 The command checks the IDs and whether both files for each entry can be read. It prints public case IDs and leaves the output directory untouched. Synthetic selection tests run with the standard Python test command above.
+
+## Stage label assets and metadata
+
+Run the label exporter from `backend/` to validate the selected NIfTI pairs and stage their cropped masks and metadata outside `public/`.
+
+```powershell
+.\.venv\Scripts\python.exe -m preprocessing.label_export --dataset-dir .local/Task03_Liver --allowlist .local/selection.json --release-id demo-1 --output-dir .local/staging
+```
+
+The exporter checks the CT and mask dimensions and converts their affine transforms to millimetres. It requires corresponding corner voxel centres to be within 0.001 mm. If a header omits its spatial unit, supply an override only after verifying the unit for that file. For example, `--unit-overrides .local/verified-units.json` can read `{"case-001":{"ct":"mm","label":"mm"}}`. Include only the fields that need an override. Accepted units are `meter`, `mm`, and `micron`.
+
+Look for `labels.bin` and `metadata.json` under `.local/staging/releases/demo-1/<caseId>/`. The command stages all selected cases before making that directory available and refuses to replace an existing staged release. Mesh generation and public case publication follow in later tasks.
