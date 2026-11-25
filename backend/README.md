@@ -69,3 +69,9 @@ Run the full exporter from `backend/` with the same allowlist and verified units
 Each release includes dataset attribution and licensing information. The exporter stages and verifies every case before moving the release into place and replacing `index.json`. Use a new release ID for each publication. The previous release directory stays available to clients that already loaded its index.
 
 The local preview serves `cases/index.json` with `Cache-Control: no-cache` and versioned case files with `Cache-Control: public, max-age=31536000, immutable`. Apply the same policy on the static host when deploying the demo.
+
+## Evaluate resection geometry
+
+Create a `PreparedCase` from `src/volumetry.ts` with a case's metadata and `Uint8Array` label buffer. It takes a private snapshot once. Call `evaluate(plane)` on the same case whenever the plane changes. A plane has a point in millimetres, a normal, and a removal side, as defined in `src/plane.ts`.
+
+The result contains full-precision volumes in millilitres, percentages, and tumour contact and distance in millimetres. `npm test` exercises the engine with synthetic masks, including oblique cuts and cases where the cut passes between disconnected tumour regions.
