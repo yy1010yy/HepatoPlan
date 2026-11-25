@@ -33,3 +33,15 @@ The two JSON Schemas under `contracts/` define the index and case metadata. Pyth
 - Both binary STL meshes use the same physical frame in millimetres. The preview serves the public index and case assets as static files.
 
 The schemas validate the JSON structure. The exporter and loader tasks in the tracker cover asset integrity and alignment checks.
+
+## Check an offline case selection
+
+For a real demo release, use the extracted [Medical Segmentation Decathlon Task03 Liver dataset](https://medicaldecathlon.com/dataaws/) with its `imagesTr/` and `labelsTr/` directories. Keep the dataset and allowlist outside `public/`. One local option is `backend/.local/`, which Git ignores.
+
+Create a local `selection.json` mapping public case IDs to source filename stems, for example `{"case-001": "liver_10"}`. This entry pairs `imagesTr/liver_10.nii.gz` with `labelsTr/liver_10.nii.gz`. Run the check from `backend/`.
+
+```powershell
+.\.venv\Scripts\python.exe -m preprocessing.case_selection --dataset-dir .local/Task03_Liver --allowlist .local/selection.json --release-id demo-1 --output-dir ../public/cases
+```
+
+The command checks the IDs and whether both files for each entry can be read. It prints public case IDs and leaves the output directory untouched. Synthetic selection tests run with the standard Python test command above.
