@@ -18,7 +18,7 @@ Use the path to a Python 3.12 executable directly for the first command if your 
 Serve the public directory from `backend/` and open `http://127.0.0.1:8000/cases/index.json`.
 
 ```powershell
-.\.venv\Scripts\python.exe -m http.server 8000 --bind 127.0.0.1 --directory ../public
+.\.venv\Scripts\python.exe -m preprocessing.static_preview --port 8000
 ```
 
 The development index starts with an empty case list. The format fixtures live under `backend/fixtures/` and exercise the JSON contract using synthetic metadata.
@@ -56,4 +56,16 @@ Run the label exporter from `backend/` to validate the selected NIfTI pairs and 
 
 The exporter checks the CT and mask dimensions and converts their affine transforms to millimetres. It requires corresponding corner voxel centres to be within 0.001 mm. If a header omits its spatial unit, supply an override only after verifying the unit for that file. For example, `--unit-overrides .local/verified-units.json` can read `{"case-001":{"ct":"mm","label":"mm"}}`. Include only the fields that need an override. Accepted units are `meter`, `mm`, and `micron`.
 
-Look for `labels.bin` and `metadata.json` under `.local/staging/releases/demo-1/<caseId>/`. The command stages all selected cases before making that directory available and refuses to replace an existing staged release. Mesh generation and public case publication follow in later tasks.
+Look for `labels.bin` and `metadata.json` under `.local/staging/releases/demo-1/<caseId>/`. The command stages all selected cases before making that directory available and refuses to replace an existing staged release.
+
+## Publish a complete case release
+
+Run the full exporter from `backend/` with the same allowlist and verified units. It rebuilds the label assets directly from the source pairs and adds aligned binary STL meshes. Pass `--unit-overrides` here as well if needed.
+
+```powershell
+.\.venv\Scripts\python.exe -m preprocessing.release_export --dataset-dir .local/Task03_Liver --allowlist .local/selection.json --release-id demo-1 --output-dir ../public/cases
+```
+
+Each release includes dataset attribution and licensing information. The exporter stages and verifies every case before moving the release into place and replacing `index.json`. Use a new release ID for each publication. The previous release directory stays available to clients that already loaded its index.
+
+The local preview serves `cases/index.json` with `Cache-Control: no-cache` and versioned case files with `Cache-Control: public, max-age=31536000, immutable`. Apply the same policy on the static host when deploying the demo.

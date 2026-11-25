@@ -35,10 +35,8 @@ def read_unit_overrides(path: Path | None, selection: ExportSelection) -> dict[s
     return overrides
 
 
-def write_case_assets(
-    case_dir: Path, release_id: str, case_id: str, case: CroppedCase, validator: Draft7Validator
-) -> None:
-    metadata = {
+def case_metadata(release_id: str, case_id: str, case: CroppedCase) -> dict:
+    return {
         "schemaVersion": 1,
         "releaseId": release_id,
         "caseId": case_id,
@@ -50,6 +48,12 @@ def write_case_assets(
             "tumour": int(np.count_nonzero(case.labels == 2)),
         },
     }
+
+
+def write_case_assets(
+    case_dir: Path, release_id: str, case_id: str, case: CroppedCase, validator: Draft7Validator
+) -> None:
+    metadata = case_metadata(release_id, case_id, case)
     validator.validate(metadata)
     case_dir.mkdir()
     # tofile writes in C order regardless of the array's native layout.
