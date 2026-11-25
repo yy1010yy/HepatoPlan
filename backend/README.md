@@ -90,4 +90,10 @@ Pass the current state to `measurementPanel` for formatted rows and the save fla
 
 Use `bindPlaneControls` from `src/plane-controls.ts` to connect two native range inputs, their readouts, preset buttons, and the flip and reset buttons to a `CaseController`. Call the returned function when disconnecting the controls. The offset range comes from the loaded liver bounds and the angle range is −45° to +45°.
 
-Framework components can call `setPlaneOffset`, `setPlaneAngle`, `applyPlanePreset`, `flipResectSide`, and `resetPlane` directly and render `planeReadouts` from the current case. When opening a saved plan, pass its plane directly to `setPlane`. The readouts follow that geometry and display rounded values while the worker receives the plane at full precision.
+Framework components can call `setPlaneOffset`, `setPlaneAngle`, `applyPlanePreset`, `flipResectSide`, and `resetPlane` directly and render `planeReadouts` from the current case. The readouts follow that geometry and display rounded values while the worker receives the plane at full precision.
+
+## Mount the 3D viewer and compare plans
+
+Call `mountResectionViewer(container, controller)` in the browser with a sized container. It mounts a Three.js canvas with orbit, pan, and zoom, then renders the liver halves and tumour in the case's physical frame. `setPlaneVisible` toggles the overlay and `setLiverOpacity` accepts values from 0 to 1. Call the returned `dispose` method when removing the viewer.
+
+Create one `PlanSession` per controller. Use `save({ name, procedureType, reason, notes })` after measurements are ready and `list()` to populate the plan selector for the active case. Pass the selected ID to `open` to restore its plane and request fresh measurements. Pass two or more distinct IDs to `compare` for labelled rows in selection order. Use plan IDs as selector values because two plans may have the same name.

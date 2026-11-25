@@ -111,6 +111,12 @@ export class CaseController {
     return this.setPlane({ ...state.plane, pointMm })
   }
 
+  restorePlane(input: ResectionPlane): void {
+    const state = this.#state
+    if (state.status !== 'ready') throw new Error('Load a case before opening a saved plane.')
+    this.#queueMeasurement(state, normalisePlane(input))
+  }
+
   setPlaneAngle(angleDeg: number): boolean {
     const state = this.#state
     if (state.status !== 'ready') return false

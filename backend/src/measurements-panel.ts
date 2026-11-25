@@ -24,20 +24,19 @@ export function measurementPanel(state: CaseState, locale = 'en'): MeasurementPa
   }
 
   const { result } = measurements
+  return { status: 'ready', canSave: true, result, rows: measurementRows(result, locale) }
+}
+
+export function measurementRows(result: VolumetryResult, locale = 'en', includeTotal = true) {
   const volume = new Intl.NumberFormat(locale, { maximumFractionDigits: 3 })
   const other = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 })
-  return {
-    status: 'ready',
-    canSave: true,
-    result,
-    rows: [
-      { label: 'Total liver parenchyma', value: `${volume.format(result.totalParenchymaMl)} mL` },
+  return [
+      ...(includeTotal ? [{ label: 'Total liver parenchyma', value: `${volume.format(result.totalParenchymaMl)} mL` }] : []),
       { label: 'Removed volume', value: `${volume.format(result.resectedMl)} mL` },
       { label: 'Remaining volume', value: `${volume.format(result.remainingMl)} mL` },
       { label: 'Future Liver Remnant (FLR)', value: `${other.format(result.flrPercent)}%` },
       { label: 'Resected percentage', value: `${other.format(result.resectedPercent)}%` },
       { label: 'Tumour intersection', value: result.tumourIntersectsPlane ? 'Touches or crosses' : 'Separate' },
       { label: 'Tumour-to-plane distance (geometric estimate)', value: `${other.format(result.tumourPlaneDistanceMm)} mm` },
-    ],
-  }
+  ]
 }

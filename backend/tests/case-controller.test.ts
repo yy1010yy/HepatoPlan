@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { Mesh, MeshStandardMaterial, Vector3 } from 'three'
 import { CaseController } from '../src/case-controller.ts'
 import type { CaseBundle, LoadedCaseIndex } from '../src/case-loader.ts'
 import { measurementPanel } from '../src/measurements-panel.ts'
 import { bindPlaneControls, planeGeometry, planeReadouts, presetPlane } from '../src/plane-controls.ts'
 import type { PlaneControlElements } from '../src/plane-controls.ts'
 import type { ResectionPlane } from '../src/plane.ts'
+import { PlanSession } from '../src/plan-session.ts'
+import { createResectionScene } from '../src/resection-viewer.ts'
+import { PreparedCase } from '../src/volumetry.ts'
 import type { EvaluateVolumetry, VolumetryWorkerResponse } from '../src/volumetry-worker.ts'
 import type { VolumetryResult } from '../src/volumetry.ts'
 
@@ -359,4 +363,153 @@ test('native input binding shows saved geometry without rounding the evaluated p
   controls.angle.value = '20'
   controls.angle.dispatchEvent(new Event('input'))
   assert.equal(controller.state, state)
+})
+
+test('resection scene keeps case geometry in world space and clips opposite half-spaces', async () => {
+  const { controller, ready, frame, frames } = harness()
+  const view = createResectionScene()
+  const unsubscribe = controller.subscribe(state => view.update(state))
+  const worker = await ready()
+  controller.setPlane({ ...planeAt(0.5), unitNormal: [1, 0, 0] })
+  frame()
+  publishResult(worker, worker.jobs[0])
+
+  const positive = view.scene.getObjectByName('liver-positive')
+  const negative = view.scene.getObjectByName('liver-negative')
+  const tumour = view.scene.getObjectByName('tumour')
+  const overlay = view.scene.getObjectByName('resection-plane')
+  assert.ok(positive instanceof Mesh && positive.material instanceof MeshStandardMaterial)
+  assert.ok(negative instanceof Mesh && negative.material instanceof MeshStandardMaterial)
+  assert.ok(tumour instanceof Mesh && tumour.material instanceof MeshStandardMaterial)
+  assert.ok(overlay?.visible)
+  assert.deepEqual(view.target.toArray(), [1, 7, 10])
+  assert.equal(positive.geometry, negative.geometry)
+  assert.equal(positive.geometry.getAttribute('position').array, readyState(controller).liver.positions)
+  assert.equal(tumour.material.clippingPlanes, null)
+  const positivePlane = positive.material.clippingPlanes![0]
+  const negativePlane = negative.material.clippingPlanes![0]
+  assert.equal(positivePlane.constant, -0.5)
+  assert.equal(negativePlane.constant, 0.5)
+  const engine = new PreparedCase({
+    ...readyState(controller).metadata, dimensions: [3, 1, 1], labelCounts: { parenchyma: 2, tumour: 1 },
+  }, new Uint8Array([1, 1, 2]))
+  const kept = new Vector3(0, 0, 0)
+  const removed = new Vector3(1, 0, 0)
+  assert.ok(positivePlane.distanceToPoint(removed) > 0 && negativePlane.distanceToPoint(removed) < 0)
+  assert.ok(positivePlane.distanceToPoint(kept) < 0 && negativePlane.distanceToPoint(kept) > 0)
+  assert.equal(engine.evaluate(readyState(controller).plane).resectedMl, 0.001)
+  const removedColour = positive.material.color.getHex()
+  const retainedColour = negative.material.color.getHex()
+  assert.notEqual(removedColour, retainedColour)
+
+  view.setPlaneVisible(false)
+  view.setLiverOpacity(0.35)
+  assert.equal(overlay.visible, false)
+  assert.ok(positive.visible && negative.visible && tumour.visible)
+  assert.equal(positive.material.opacity, 0.35)
+  assert.equal(negative.material.opacity, 0.35)
+  assert.equal(frames.size, 0)
+  assert.equal(worker.jobs.length, 1)
+  controller.flipResectSide()
+  assert.equal(positive.material.color.getHex(), retainedColour)
+  assert.equal(negative.material.color.getHex(), removedColour)
+  assert.equal(overlay.visible, false)
+
+  let disposals = 0
+  positive.geometry.addEventListener('dispose', () => { disposals++ })
+  tumour.geometry.addEventListener('dispose', () => { disposals++ })
+  controller.dispose()
+  assert.equal(disposals, 2)
+  assert.equal(view.scene.getObjectByName('liver-positive'), undefined)
+  unsubscribe()
+  view.dispose()
+})
+
+test('session snapshots require current measurements and reopen unrounded saved geometry', async () => {
+  const { controller, ready, frame } = harness()
+  const session = new PlanSession(controller)
+  const worker = await ready()
+  assert.throws(() => session.save({ name: 'Draft' }), /current case and plane/)
+  frame()
+  const initial = worker.jobs[0]
+  worker.emit({ type: 'calculationError', selectionToken: initial.selectionToken, revision: initial.revision,
+    message: 'Failed' })
+  assert.throws(() => session.save({ name: 'Draft' }), /current case and plane/)
+  await controller.retry()
+  frame()
+  publishResult(worker, worker.jobs[1])
+
+  assert.throws(() => session.save({ name: '   ' }), /plan name/)
+  const first = session.save({ name: ' Trial ', procedureType: 'Study', reason: 'Compare', notes: 'Preserve' })
+  assert.equal(first.name, 'Trial')
+  assert.equal(first.procedureType, 'Study')
+  assert.equal(first.reason, 'Compare')
+  assert.equal(first.notes, 'Preserve')
+  assert.deepEqual(first.result, result)
+  assert.notEqual(first.result, result)
+  assert.ok(Object.isFrozen(first.plane.pointMm) && Object.isFrozen(first.result))
+
+  controller.setPlane({ ...planeAt(4.125), resectSide: 'negative' })
+  assert.throws(() => session.save({ name: 'Trial' }), /current case and plane/)
+  frame()
+  const update = worker.jobs[2]
+  const secondResult = { ...result, resectedMl: 0.333333333, remainingMl: 0.901226667,
+    flrPercent: 73.001, resectedPercent: 26.999, tumourIntersectsPlane: true, tumourPlaneDistanceMm: 0 }
+  worker.emit({ type: 'result', selectionToken: update.selectionToken, revision: update.revision, result: secondResult })
+  const second = session.save({ name: 'Trial' })
+  assert.notEqual(first.id, second.id)
+  assert.notDeepEqual(first.plane, second.plane)
+  assert.equal(second.result.resectedMl, 0.333333333)
+
+  const comparison = session.compare([second.id, first.id])
+  assert.deepEqual(comparison.plans.map(plan => plan.id), [second.id, first.id])
+  assert.deepEqual(comparison.rows.map(row => row.values), [
+    ['0.333 mL', '0.123 mL'], ['0.901 mL', '1.111 mL'], ['73%', '90%'],
+    ['27%', '10%'], ['Touches or crosses', 'Separate'], ['0 mm', '2.46 mm'],
+  ])
+  assert.throws(() => session.compare([first.id, first.id]), /distinct/)
+  for (const plan of [first, second, second]) {
+    const previousRevision = readyState(controller).revision
+    assert.equal(session.open(plan.id), plan)
+    const state = readyState(controller)
+    assert.deepEqual(state.plane, plan.plane)
+    assert.ok(state.revision > previousRevision)
+    assert.equal(state.measurements.status, 'updating')
+    const readouts = planeReadouts(state.liver.bounds, state.plane)
+    assert.equal(readouts.offsetMm, plan.plane.pointMm[0] - 1)
+    frame()
+    const job = worker.jobs.at(-1)!
+    assert.deepEqual(job.plane, plan.plane)
+    publishResult(worker, job)
+  }
+})
+
+test('plans stay in memory across case switches and comparisons reject other cases and releases', async () => {
+  const { controller, loads, workers, ready, frame } = harness()
+  const session = new PlanSession(controller)
+  function save(worker: FakeWorker, name: string) {
+    frame()
+    publishResult(worker, worker.jobs.at(-1)!)
+    return session.save({ name })
+  }
+  const a = save(await ready('a'), 'Trial')
+  const b = save(await ready('b'), 'Trial')
+  assert.deepEqual(session.list(), [b])
+  assert.throws(() => session.open(a.id), /active case and release/)
+  assert.throws(() => session.compare([b.id, a.id]), /active case and release/)
+  const worker = await ready('a')
+  const another = save(worker, 'Alternative')
+  assert.deepEqual(session.list(), [a, another])
+
+  const next = controller.selectCase('a')
+  const bundle = makeBundle('a')
+  loads.at(-1)!.resolve({ ...bundle, metadata: { ...bundle.metadata, releaseId: 'other-release' } })
+  await next
+  const state = controller.state
+  if (state.status !== 'loading') throw new Error('Expected loading case.')
+  const newWorker = workers.at(-1)!
+  newWorker.emit({ type: 'ready', selectionToken: state.selectionToken })
+  const otherRelease = save(newWorker, 'Trial')
+  assert.deepEqual(session.list(), [otherRelease])
+  assert.throws(() => session.compare([a.id, otherRelease.id]), /active case and release/)
 })
