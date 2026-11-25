@@ -23,6 +23,9 @@ export function normalisePlane(input: unknown): ResectionPlane {
   }
 
   const [x, y, z] = unitNormal
+  if (Math.abs(Math.hypot(x, y, z) - 1) <= Number.EPSILON) {
+    return { pointMm: [...pointMm], unitNormal: [...unitNormal], resectSide }
+  }
   const scale = Math.max(Math.abs(x), Math.abs(y), Math.abs(z))
   if (scale === 0) throw new RangeError('Plane normal must be nonzero.')
   // Scaling first keeps normalization stable at either end of the finite number range.

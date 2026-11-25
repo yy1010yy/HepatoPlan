@@ -3,6 +3,8 @@ import { test } from 'node:test'
 import { CaseController } from '../src/case-controller.ts'
 import type { CaseBundle, LoadedCaseIndex } from '../src/case-loader.ts'
 import { measurementPanel } from '../src/measurements-panel.ts'
+import { bindPlaneControls, planeGeometry, planeReadouts, presetPlane } from '../src/plane-controls.ts'
+import type { PlaneControlElements } from '../src/plane-controls.ts'
 import type { ResectionPlane } from '../src/plane.ts'
 import type { EvaluateVolumetry, VolumetryWorkerResponse } from '../src/volumetry-worker.ts'
 import type { VolumetryResult } from '../src/volumetry.ts'
@@ -242,4 +244,119 @@ test('worker crash reloads the bundle and retains the current plane', async () =
   workers[2].crash()
   assert.equal(controller.state.status, 'error')
   assert.equal(loads.length, 3)
+})
+
+test('plane controls map offsets and angles, flip the side, and reset through the queue', async () => {
+  const { controller, ready, frame } = harness()
+  const worker = await ready()
+  assert.equal(controller.setPlaneOffset(-3), true)
+  assert.equal(controller.setPlaneAngle(30), true)
+  const state = readyState(controller)
+  assert.deepEqual(state.plane.pointMm, [-2, 7, 10])
+  assert.ok(Math.abs(state.plane.unitNormal[0] - Math.sqrt(3) / 2) < 1e-12)
+  assert.ok(Math.abs(state.plane.unitNormal[1] - 0.5) < 1e-12)
+  assert.deepEqual(planeReadouts(state.liver.bounds, state.plane).offsetText, '−3 mm')
+  assert.deepEqual(planeReadouts(state.liver.bounds, state.plane).angleText, '+30°')
+  assert.throws(() => controller.setPlaneOffset(6), /within the case range/)
+  assert.throws(() => controller.setPlaneAngle(1.5), /whole degree/)
+  assert.throws(() => controller.setPlaneAngle(46), /whole degree/)
+  assert.equal(controller.state, state)
+
+  controller.flipResectSide()
+  const flipped = readyState(controller)
+  assert.deepEqual(flipped.plane, { ...state.plane, resectSide: 'negative' })
+  frame()
+  assert.deepEqual(worker.jobs[0].plane, flipped.plane)
+  publishResult(worker, worker.jobs[0])
+  controller.resetPlane()
+  frame()
+  assert.deepEqual(worker.jobs[1].plane, { pointMm: [1, 7, 10], unitNormal: [1, 0, 0], resectSide: 'positive' })
+  assert.equal(controller.resetPlane(), false)
+})
+
+test('each preset changes both values in one revision while retaining the selected side', async () => {
+  const fractionalBounds = { min: [0, 0, 0], max: [10.2, 4, 6] } as const
+  assert.equal(planeGeometry(fractionalBounds).offsetLimitMm, 6)
+  const negative = presetPlane(fractionalBounds, 'negative-offset', 'negative')
+  assert.equal(planeReadouts(fractionalBounds, negative).offsetText, '−4 mm')
+  const { controller, ready, frame } = harness()
+  const worker = await ready()
+  controller.flipResectSide()
+  for (const [preset, offset, angle] of [
+    ['negative-offset', -3, -10], ['centre-tilt', 0, 8], ['positive-offset', 3, 14],
+  ] as const) {
+    const previous = readyState(controller)
+    assert.equal(controller.applyPlanePreset(preset), true)
+    const current = readyState(controller)
+    assert.equal(current.revision, previous.revision + 1)
+    assert.equal(current.plane.resectSide, 'negative')
+    const readouts = planeReadouts(current.liver.bounds, current.plane)
+    assert.equal(readouts.offsetMm, offset)
+    assert.ok(Math.abs(readouts.angleDeg - angle) < 1e-12)
+    assert.equal(controller.applyPlanePreset(preset), false)
+    frame()
+    const job = worker.jobs.at(-1)!
+    assert.equal(job.revision, current.revision)
+    assert.deepEqual(job.plane, current.plane)
+    publishResult(worker, job)
+  }
+  assert.equal(worker.jobs.length, 3)
+})
+
+test('native input binding shows saved geometry without rounding the evaluated plane', async () => {
+  class Control extends EventTarget {
+    disabled = false
+    value = ''
+    min = ''
+    max = ''
+    step = ''
+    type = ''
+    textContent = ''
+    attributes = new Map<string, string>()
+    get valueAsNumber() { return Number(this.value) }
+    setAttribute(name: string, value: string) { this.attributes.set(name, value) }
+    removeAttribute(name: string) { this.attributes.delete(name) }
+  }
+  const { controller, ready, frame } = harness()
+  const controls = {
+    offset: new Control(), angle: new Control(), offsetReadout: new Control(), angleReadout: new Control(),
+    flip: new Control(), reset: new Control(),
+    presets: { 'negative-offset': new Control(), 'centre-tilt': new Control(), 'positive-offset': new Control() },
+  }
+  const unbind = bindPlaneControls(controller, controls as unknown as PlaneControlElements)
+  assert.equal(controls.offset.disabled, true)
+  const worker = await ready()
+  assert.deepEqual([controls.offset.min, controls.offset.max, controls.offset.step], ['-5', '5', '1'])
+  assert.deepEqual([controls.angle.min, controls.angle.max, controls.angle.step], ['-45', '45', '1'])
+
+  const radians = 12.5 * Math.PI / 180
+  const saved: ResectionPlane = { pointMm: [3.25, 7, 10],
+    unitNormal: [Math.cos(radians), Math.sin(radians), 0], resectSide: 'negative' }
+  controller.setPlane(saved)
+  assert.equal(controls.offsetReadout.textContent, '+2.25 mm')
+  assert.equal(controls.angleReadout.textContent, '+12.5°')
+  assert.equal(controls.offset.attributes.get('aria-valuetext'), '+2.25 mm')
+  frame()
+  assert.deepEqual(worker.jobs[0].plane, saved)
+  publishResult(worker, worker.jobs[0])
+
+  controls.offset.value = '-2'
+  controls.offset.dispatchEvent(new Event('input'))
+  assert.equal(controls.offsetReadout.textContent, '−2 mm')
+  assert.equal(controls.angleReadout.textContent, '+12.5°')
+  controls.angle.value = '-15'
+  controls.angle.dispatchEvent(new Event('input'))
+  assert.equal(controls.angleReadout.textContent, '−15°')
+  controls.presets['centre-tilt'].dispatchEvent(new Event('click'))
+  assert.equal(controls.angleReadout.textContent, '+8°')
+  assert.equal(controls.offsetReadout.textContent, '0 mm')
+  controls.flip.dispatchEvent(new Event('click'))
+  assert.equal(readyState(controller).plane.resectSide, 'positive')
+  controls.reset.dispatchEvent(new Event('click'))
+  assert.equal(controls.angleReadout.textContent, '0°')
+  const state = controller.state
+  unbind()
+  controls.angle.value = '20'
+  controls.angle.dispatchEvent(new Event('input'))
+  assert.equal(controller.state, state)
 })

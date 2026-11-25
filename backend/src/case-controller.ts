@@ -2,6 +2,8 @@ import { loadCaseBundle } from './case-loader.ts'
 import type { CaseBundle, LoadedCaseIndex } from './case-loader.ts'
 import { normalisePlane } from './plane.ts'
 import type { ResectionPlane } from './plane.ts'
+import { defaultPlane, normalAtAngle, planeGeometry, pointAtOffset, presetPlane } from './plane-controls.ts'
+import type { PlanePreset } from './plane-controls.ts'
 import { startVolumetryWorker } from './volumetry-worker.ts'
 import type { EvaluateVolumetry, VolumetryWorkerResponse } from './volumetry-worker.ts'
 import type { VolumetryResult } from './volumetry.ts'
@@ -42,15 +44,6 @@ type ControllerDependencies = {
   requestFrame(callback: FrameRequestCallback): number
   cancelFrame(handle: number): void
   releaseMeshes?(meshes: CaseMeshes): void
-}
-
-function defaultPlane(liver: CaseBundle['liver']): ResectionPlane {
-  const { min, max } = liver.bounds
-  return {
-    pointMm: [min[0] / 2 + max[0] / 2, min[1] / 2 + max[1] / 2, min[2] / 2 + max[2] / 2],
-    unitNormal: [1, 0, 0],
-    resectSide: 'positive',
-  }
 }
 
 function describe(error: unknown): string {
@@ -109,6 +102,37 @@ export class CaseController {
     }
     this.#queueMeasurement(state, plane)
     return true
+  }
+
+  setPlaneOffset(offsetMm: number): boolean {
+    const state = this.#state
+    if (state.status !== 'ready') return false
+    const pointMm = pointAtOffset(planeGeometry(state.liver.bounds), offsetMm)
+    return this.setPlane({ ...state.plane, pointMm })
+  }
+
+  setPlaneAngle(angleDeg: number): boolean {
+    const state = this.#state
+    if (state.status !== 'ready') return false
+    return this.setPlane({ ...state.plane, unitNormal: normalAtAngle(angleDeg) })
+  }
+
+  flipResectSide(): boolean {
+    const state = this.#state
+    if (state.status !== 'ready') return false
+    const resectSide = state.plane.resectSide === 'positive' ? 'negative' : 'positive'
+    return this.setPlane({ ...state.plane, resectSide })
+  }
+
+  resetPlane(): boolean {
+    const state = this.#state
+    return state.status === 'ready' && this.setPlane(defaultPlane(state.liver.bounds))
+  }
+
+  applyPlanePreset(preset: PlanePreset): boolean {
+    const state = this.#state
+    return state.status === 'ready'
+      && this.setPlane(presetPlane(state.liver.bounds, preset, state.plane.resectSide))
   }
 
   async retry(): Promise<void> {
@@ -175,7 +199,7 @@ export class CaseController {
     }
     if (message.type === 'ready') {
       if (this.#state.status !== 'loading' || !this.#assets) return
-      const plane = this.#desiredPlane ?? defaultPlane(this.#assets.liver)
+      const plane = this.#desiredPlane ?? defaultPlane(this.#assets.liver.bounds)
       this.#queueMeasurement({ status: 'ready', ...selection, ...this.#assets }, plane)
       return
     }

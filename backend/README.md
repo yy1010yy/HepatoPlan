@@ -85,3 +85,9 @@ Pass the bundle's metadata and label buffer to `startVolumetryWorker` with a new
 For interactive use, create a `CaseController` with the loaded catalog and subscribe to its state. Call `selectCase` and wait for the ready state before rendering the selected case. Call `setPlane` to update the viewer and queue a calculation. The default plane passes through the liver bounds centre. Use the optional `releaseMeshes` callback to dispose of renderer-owned geometry when the controller releases a case, and call `dispose` when leaving the workspace.
 
 Pass the current state to `measurementPanel` for formatted rows and the save flag. Use `retry` on the controller for a failed load or calculation. On a crash, the controller reloads the worker and reuses the current plane. If the replacement crashes before returning a current result, the controller exposes a retryable case error.
+
+## Wire the resection plane controls
+
+Use `bindPlaneControls` from `src/plane-controls.ts` to connect two native range inputs, their readouts, preset buttons, and the flip and reset buttons to a `CaseController`. Call the returned function when disconnecting the controls. The offset range comes from the loaded liver bounds and the angle range is −45° to +45°.
+
+Framework components can call `setPlaneOffset`, `setPlaneAngle`, `applyPlanePreset`, `flipResectSide`, and `resetPlane` directly and render `planeReadouts` from the current case. When opening a saved plan, pass its plane directly to `setPlane`. The readouts follow that geometry and display rounded values while the worker receives the plane at full precision.
