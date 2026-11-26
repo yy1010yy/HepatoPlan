@@ -33,11 +33,11 @@ function snapshotVector(vector: Vec3): Vec3 {
 }
 
 export class PlanSession {
-  readonly #controller: Pick<CaseController, 'state' | 'restorePlane'>
+  readonly #controller: Pick<CaseController, 'state' | 'restorePlane' | 'selectComparison'>
   readonly #plans = new Map<string, SavedPlan[]>()
   #nextId = 0
 
-  constructor(controller: Pick<CaseController, 'state' | 'restorePlane'>) {
+  constructor(controller: Pick<CaseController, 'state' | 'restorePlane' | 'selectComparison'>) {
     this.#controller = controller
   }
 
@@ -80,6 +80,14 @@ export class PlanSession {
     const plan = this.#find(planId)
     this.#controller.restorePlane(plan.plane)
     return plan
+  }
+
+  selectComparison(planAId: string, planBId: string): void {
+    const current = this.list()
+    this.#controller.selectComparison(
+      current.find(plan => plan.id === planAId),
+      current.find(plan => plan.id === planBId),
+    )
   }
 
   compare(planIds: readonly string[], locale = 'en'): PlanComparison {

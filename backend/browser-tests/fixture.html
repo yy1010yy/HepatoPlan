@@ -2,6 +2,7 @@
 <html lang="en">
 <meta charset="utf-8">
 <title>HepatoPlan synthetic workflow test</title>
+<link rel="icon" href="data:,">
 <style>
   #viewer { width: 480px; height: 340px; background: #18202a; }
   label { display: inline-block; margin: 4px; }
@@ -26,12 +27,21 @@
   <label>Plan name <input id="name"></label><button id="save" disabled>Save plan</button>
   <label>Plan A <select id="plan-a"></select></label><label>Plan B <select id="plan-b"></select></label>
   <button id="open">Open Plan A</button><button id="compare">Compare plans</button>
+  <label>Show Differences <input id="show-differences" type="checkbox" disabled></label>
 </div>
 <pre id="results"></pre><pre id="comparison"></pre>
+<section id="difference-legend" aria-labelledby="difference-title" hidden>
+  <h2 id="difference-title">Geometric comparison</h2>
+  <p role="status" id="difference-status"></p>
+  <ul id="difference-rows"></ul>
+  <button id="retry-difference" hidden>Retry</button>
+</section>
 <div>
   <output id="revision"></output><output id="dispatches">0</output>
   <output id="saved-plan"></output><button id="crash">Simulate worker crash</button>
   <output id="last-timing" hidden></output>
+  <output id="comparison-dispatches" hidden>0</output>
+  <output id="comparison-result" hidden></output>
 </div>
 <script type="module" src="./fixture.ts"></script>
 </html>

@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import type { CaseMetadata, Vec3 } from '../src/case-contract.ts'
 import { normalisePlane } from '../src/plane.ts'
 import type { ResectionPlane } from '../src/plane.ts'
-import { PreparedCase } from '../src/volumetry.ts'
+import { comparePlans, PreparedCase } from '../src/volumetry.ts'
 
 const identity: CaseMetadata['voxelToWorldMm'] = [
   [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1],
@@ -48,6 +48,36 @@ function xPlane(x: number, resectSide: ResectionPlane['resectSide'] = 'positive'
 function close(actual: number, expected: number, tolerance = 1e-12) {
   assert.ok(Math.abs(actual - expected) <= tolerance, `Expected ${expected}, got ${actual}`)
 }
+
+test('ordered plan comparisons partition the parenchyma and reconcile with both measurements', () => {
+  const { metadata, labels } = cube()
+  const reflected = fixture([5, 4, 4], (i, j, k) => i < 4 ? 1 : (j === 0 && k === 0 ? 2 : 0), [
+    [-2, 0, 0, 10], [0, 3, 0, 0], [0, 0, 4, 0], identity[3],
+  ])
+  const unit = new PreparedCase(metadata, labels)
+  const anisotropic = new PreparedCase(reflected.metadata, reflected.labels)
+  const yPlane = (y: number): ResectionPlane => ({ pointMm: [0, y, 0], unitNormal: [0, 1, 0], resectSide: 'positive' })
+  for (const [prepared, a, b, expected] of [
+    [unit, xPlane(1.5), xPlane(1.5), [0, 0, 0.032, 0.032]],
+    [unit, xPlane(1.5), xPlane(1.5, 'negative'), [0.032, 0.032, 0, 0]],
+    [unit, xPlane(1.5), yPlane(1.5), [0.016, 0.016, 0.016, 0.016]],
+    [unit, xPlane(1), xPlane(1, 'negative'), [0.032, 0.016, 0, 0.016]],
+    [unit, xPlane(1, 'negative'), xPlane(1), [0.016, 0.032, 0, 0.016]],
+    [anisotropic, xPlane(7), yPlane(4.5), [0.384, 0.384, 0.384, 0.384]],
+  ] as const) {
+    const { removedOnlyByAMl: onlyA, removedOnlyByBMl: onlyB, removedByBothMl: both, retainedByBothMl: neither }
+      = comparePlans(prepared, a, b)
+    const evaluationA = prepared.evaluate(a)
+    const evaluationB = prepared.evaluate(b)
+    const volumes = [onlyA, onlyB, both, neither]
+    volumes.forEach((value, index) => close(value, expected[index]))
+    close(onlyA + onlyB + both + neither, prepared === unit ? 0.064 : 1.536)
+    close(onlyA + both, evaluationA.resectedMl)
+    close(onlyB + neither, evaluationA.remainingMl)
+    close(onlyB + both, evaluationB.resectedMl)
+    close(onlyA + neither, evaluationB.remainingMl)
+  }
+})
 
 test('plane validation normalizes safely and rejects invalid input', () => {
   for (const scale of [1, Number.MIN_VALUE, Number.MAX_VALUE]) {

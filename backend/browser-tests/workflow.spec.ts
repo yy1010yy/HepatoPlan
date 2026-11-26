@@ -1,12 +1,17 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { BoxGeometry } from 'three'
+import type { SavedPlan } from '../src/plan-session.ts'
+import { colourPositions, comparisonVolumes } from './comparison-observations.ts'
 
 const base = '/synthetic/cases'
 const caseRoot = base + '/releases/test-1/'
 const index = { schemaVersion: 1, releaseId: 'test-1', cases: [{ caseId: 'case-a' }, { caseId: 'case-b' }] }
 const mask = Buffer.alloc(64, 1)
 mask[(3 * 4 + 1) * 4 + 1] = 2
+const comparisonMask = Buffer.alloc(80)
+comparisonMask.fill(1, 0, 64)
+comparisonMask[64] = 2
 
 function stl(size: number, centre: [number, number, number]): Buffer {
   const box = new BoxGeometry(size, size, size)
@@ -34,7 +39,8 @@ const liverStl = stl(4, [1.5, 1.5, 1.5])
 const tumourStl = stl(1, [3, 1, 1])
 
 type Fault = 'bad-index' | 'wrong-case' | 'missing-mesh' | 'short-mask' | 'short-stl' | 'bad-label'
-async function provideCases(page: Page, fault: () => Fault | undefined = () => undefined) {
+async function provideCases(page: Page, fault: () => Fault | undefined = () => undefined, comparisonCube = false) {
+  const labels = comparisonCube ? comparisonMask : mask
   await page.route('**/synthetic/cases/**', async route => {
     const path = new URL(route.request().url()).pathname
     const failure = fault()
@@ -47,13 +53,13 @@ async function provideCases(page: Page, fault: () => Fault | undefined = () => u
       case 'metadata.json':
         await route.fulfill({ json: {
           schemaVersion: 1, releaseId: 'test-1', caseId: failure === 'wrong-case' ? 'case-other' : caseId,
-          dimensions: [4, 4, 4], voxelSpacingMm: [1, 1, 1],
+          dimensions: [comparisonCube ? 5 : 4, 4, 4], voxelSpacingMm: [1, 1, 1],
           voxelToWorldMm: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
-          labelCounts: { parenchyma: 63, tumour: 1 },
+          labelCounts: { parenchyma: comparisonCube ? 64 : 63, tumour: 1 },
         } })
         return
       case 'labels.bin': {
-        const body = failure === 'short-mask' ? mask.subarray(1) : Buffer.from(mask)
+        const body = failure === 'short-mask' ? labels.subarray(1) : Buffer.from(labels)
         if (failure === 'bad-label') body[0] = 3
         await route.fulfill({ body })
         return
@@ -63,7 +69,7 @@ async function provideCases(page: Page, fault: () => Fault | undefined = () => u
         else await route.fulfill({ body: failure === 'short-stl' ? liverStl.subarray(0, 100) : liverStl })
         return
       case 'tumour.stl':
-        await route.fulfill({ body: tumourStl })
+        await route.fulfill({ body: comparisonCube ? stl(1, [4, 0, 0]) : tumourStl })
         return
       default:
         await route.fulfill({ status: 404 })
@@ -71,31 +77,101 @@ async function provideCases(page: Page, fault: () => Fault | undefined = () => u
   })
 }
 
-async function colourPositions(page: Page) {
+async function viewerColours(page: Page, mode: 'single' | 'comparison' = 'single') {
   const png = await page.locator('#viewer canvas').screenshot()
-  return page.evaluate(async base64 => {
-    const bytes = Uint8Array.from(atob(base64), char => char.charCodeAt(0))
-    const image = await createImageBitmap(new Blob([bytes], { type: 'image/png' }))
-    const canvas = document.createElement('canvas')
-    canvas.width = image.width
-    canvas.height = image.height
-    const context = canvas.getContext('2d')!
-    context.drawImage(image, 0, 0)
-    image.close()
-    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
-    let orange = 0
-    let teal = 0
-    let orangeX = 0
-    let tealX = 0
-    for (let pixel = 0; pixel < pixels.length; pixel += 4) {
-      const [r, g, b] = [pixels[pixel], pixels[pixel + 1], pixels[pixel + 2]]
-      const x = (pixel / 4) % canvas.width
-      if (r > g + 16 && g > b + 10) { orange++; orangeX += x }
-      if (g > r + 16 && b > r + 12) { teal++; tealX += x }
-    }
-    return { orange, teal, horizontalDifference: orangeX / orange - tealX / teal }
-  }, png.toString('base64'))
+  return colourPositions(page, png, mode)
 }
+
+test('comparison surface follows ordered saved planes while view controls reuse the result', async ({ page }) => {
+  const shaderErrors: string[] = []
+  page.on('console', message => { if (message.type() === 'error') shaderErrors.push(message.text()) })
+  await provideCases(page, undefined, true)
+  await page.goto('/browser-tests/fixture.html')
+  await page.getByRole('combobox', { name: 'Case', exact: true }).selectOption('case-a')
+  const status = page.locator('#status')
+  const toggle = page.getByLabel('Show Differences')
+  const legend = page.getByRole('region', { name: 'Geometric comparison' })
+  const planA = page.getByRole('combobox', { name: 'Plan A' })
+  const planB = page.getByRole('combobox', { name: 'Plan B' })
+  const comparisonDispatches = page.locator('#comparison-dispatches')
+  const flip = page.getByRole('button', { name: 'Flip removal side' })
+  async function save(name: string): Promise<SavedPlan> {
+    await expect(status).toHaveText('ready')
+    await page.getByLabel('Plan name').fill(name)
+    await page.getByRole('button', { name: 'Save plan' }).click()
+    return JSON.parse((await page.locator('#saved-plan').textContent())!)
+  }
+
+  await expect(toggle).toBeDisabled()
+  const positive = await save('Positive')
+  await flip.click()
+  const negative = await save('Negative')
+  await flip.click()
+  const copy = await save('Positive copy')
+  expect(positive.plane.pointMm[0]).toBe(1.5)
+  expect(negative.plane.pointMm).toEqual(positive.plane.pointMm)
+  expect(negative.plane.unitNormal).toEqual(positive.plane.unitNormal)
+  expect(positive.result.flrPercent).toBe(50)
+  expect(negative.result.flrPercent).toBe(50)
+  await expect(toggle).toBeEnabled()
+  await expect(toggle).not.toBeChecked()
+  await expect(legend).toBeHidden()
+  await page.getByRole('button', { name: 'Compare plans' }).click()
+  await page.getByLabel('Show Plane').uncheck()
+  await page.getByLabel('Liver Opacity').fill('1')
+  await toggle.check()
+  const onlyA = legend.getByRole('listitem').filter({ hasText: 'Removed only by A 0.032 mL' })
+  const onlyB = legend.getByRole('listitem').filter({ hasText: 'Removed only by B 0.032 mL' })
+  await expect(onlyA.locator('[aria-hidden=true]')).toHaveCSS('background-color', 'rgb(0, 114, 178)')
+  await expect(onlyB.locator('[aria-hidden=true]')).toHaveCSS('background-color', 'rgb(213, 94, 0)')
+  await expect(legend.getByText('Removed by both 0 mL')).toBeVisible()
+  await expect(legend.getByText('Retained by both 0 mL')).toBeVisible()
+  const volumes = await comparisonVolumes(page, [positive.id, negative.id])
+  expect(Math.abs(volumes.removedOnlyByAMl - 0.032)).toBeLessThanOrEqual(1e-12)
+  expect(Math.abs(volumes.removedOnlyByBMl - 0.032)).toBeLessThanOrEqual(1e-12)
+  expect(volumes.removedByBothMl).toBe(0)
+  expect(volumes.retainedByBothMl).toBe(0)
+  const initial = await viewerColours(page, 'comparison')
+  expect(initial.orange).toBeGreaterThan(100)
+  expect(initial.teal).toBeGreaterThan(100)
+  expect(initial.horizontalDifference).toBeLessThan(-10)
+
+  const beforeViewChanges = await comparisonDispatches.textContent()
+  await toggle.uncheck()
+  await expect(legend).toBeHidden()
+  await expect(page.locator('#comparison')).toContainText('Future Liver Remnant (FLR): 50% | 50%')
+  await toggle.check()
+  await page.getByLabel('Liver Opacity').fill('0.85')
+  await page.getByLabel('Liver Opacity').fill('1')
+  const canvas = page.locator('#viewer canvas')
+  const bounds = (await canvas.boundingBox())!
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(bounds.x + bounds.width / 2 + 30, bounds.y + bounds.height / 2 + 10, { steps: 5 })
+  await page.mouse.up()
+  const rotated = await viewerColours(page, 'comparison')
+  expect(rotated.orange).toBeGreaterThan(100)
+  expect(rotated.teal).toBeGreaterThan(100)
+  expect(await comparisonDispatches.textContent()).toBe(beforeViewChanges)
+
+  await planA.selectOption({ label: 'Negative' })
+  await expect(legend).toBeHidden()
+  await planB.selectOption({ label: 'Positive' })
+  await expect(legend.getByText('Removed only by A 0.032 mL')).toBeVisible()
+  expect(await comparisonVolumes(page, [negative.id, positive.id])).toEqual(volumes)
+  const swapped = await viewerColours(page, 'comparison')
+  expect(swapped.horizontalDifference * rotated.horizontalDifference).toBeLessThan(-100)
+  await planA.selectOption({ label: 'Positive copy' })
+  await expect(legend.getByText('Removed by both 0.032 mL')).toBeVisible()
+  await expect(legend.getByText('Retained by both 0.032 mL')).toBeVisible()
+  expect(await comparisonVolumes(page, [copy.id, positive.id])).toEqual({
+    removedOnlyByAMl: 0, removedOnlyByBMl: 0, removedByBothMl: 0.032, retainedByBothMl: 0.032,
+  })
+  const identical = await viewerColours(page, 'comparison')
+  expect(identical.orange).toBeLessThan(10)
+  expect(identical.teal).toBeLessThan(10)
+  expect(shaderErrors).toEqual([])
+})
 
 test('viewer controls, quantitative results and saved plans agree in the browser', async ({ page }) => {
   const pageErrors: string[] = []
@@ -121,13 +197,13 @@ test('viewer controls, quantitative results and saved plans agree in the browser
   await page.getByLabel('Show Plane').uncheck()
   await page.getByLabel('Liver Opacity').press('End')
   await expect(dispatches).toHaveText(baseline!)
-  const beforeFlip = await colourPositions(page)
+  const beforeFlip = await viewerColours(page)
   expect(beforeFlip.orange).toBeGreaterThan(500)
   expect(beforeFlip.teal).toBeGreaterThan(500)
   await page.getByRole('button', { name: 'Flip removal side' }).click()
   await expect(status).toHaveText('ready')
   await expect(results).toContainText('Removed volume: 0.032 mL')
-  const afterFlip = await colourPositions(page)
+  const afterFlip = await viewerColours(page)
   expect(afterFlip.orange).toBeGreaterThan(500)
   expect(afterFlip.teal).toBeGreaterThan(500)
   expect(beforeFlip.horizontalDifference * afterFlip.horizontalDifference).toBeLessThan(-100)

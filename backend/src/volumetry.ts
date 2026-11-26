@@ -12,6 +12,13 @@ export type VolumetryResult = {
   readonly tumourPlaneDistanceMm: number
 }
 
+export type PlanDifferenceResult = {
+  readonly removedOnlyByAMl: number
+  readonly removedOnlyByBMl: number
+  readonly removedByBothMl: number
+  readonly retainedByBothMl: number
+}
+
 function dot(a: Vec3, b: Vec3): number {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
@@ -92,7 +99,7 @@ export class PreparedCase {
     return this.#labelCounts
   }
 
-  evaluate(planeInput: ResectionPlane): VolumetryResult {
+  #projectPlane(planeInput: ResectionPlane) {
     const { pointMm, unitNormal, resectSide } = normalisePlane(planeInput)
     const [a0, a1, a2] = this.#columns
     const [tx, ty, tz] = this.#translation
@@ -108,7 +115,12 @@ export class PreparedCase {
       throw new RangeError('Plane distances are outside the supported numeric range.')
     }
 
-    const sideSign = resectSide === 'positive' ? 1 : -1
+    return { offset, stepI, stepJ, stepK, halfWidth, sideSign: resectSide === 'positive' ? 1 : -1 }
+  }
+
+  evaluate(planeInput: ResectionPlane): VolumetryResult {
+    const { offset, stepI, stepJ, stepK, halfWidth, sideSign } = this.#projectPlane(planeInput)
+    const [nx, ny, nz] = this.#dimensions
     let resected = 0
     let closestTumourCentreMm = Infinity
     let index = 0
@@ -142,4 +154,39 @@ export class PreparedCase {
       tumourPlaneDistanceMm: Math.max(0, closestTumourCentreMm - halfWidth),
     }
   }
+
+  compare(planeA: ResectionPlane, planeB: ResectionPlane): PlanDifferenceResult {
+    const a = this.#projectPlane(planeA)
+    const b = this.#projectPlane(planeB)
+    const [nx, ny, nz] = this.#dimensions
+    // Index bits record removal by A and B, respectively.
+    const counts = [0, 0, 0, 0]
+    let index = 0
+    for (let i = 0; i < nx; i++) {
+      const sliceA = a.offset + a.stepI * i
+      const sliceB = b.offset + b.stepI * i
+      for (let j = 0; j < ny; j++) {
+        const rowA = sliceA + a.stepJ * j
+        const rowB = sliceB + b.stepJ * j
+        for (let k = 0; k < nz; k++, index++) {
+          if (this.#labels[index] !== 1) continue
+          const removedA = a.sideSign * (rowA + a.stepK * k) > 0
+          const removedB = b.sideSign * (rowB + b.stepK * k) > 0
+          counts[Number(removedA) + 2 * Number(removedB)]++
+        }
+      }
+    }
+
+    const voxelMl = this.#voxelVolumeMm3 / 1000
+    return {
+      removedOnlyByAMl: counts[1] * voxelMl,
+      removedOnlyByBMl: counts[2] * voxelMl,
+      removedByBothMl: counts[3] * voxelMl,
+      retainedByBothMl: counts[0] * voxelMl,
+    }
+  }
+}
+
+export function comparePlans(preparedCase: PreparedCase, planeA: ResectionPlane, planeB: ResectionPlane): PlanDifferenceResult {
+  return preparedCase.compare(planeA, planeB)
 }

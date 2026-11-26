@@ -1,4 +1,4 @@
-import { PreparedCase } from './volumetry.ts'
+import { comparePlans, PreparedCase } from './volumetry.ts'
 import type { VolumetryWorkerRequest, VolumetryWorkerResponse } from './volumetry-worker.ts'
 
 const port = globalThis as unknown as {
@@ -34,6 +34,18 @@ port.onmessage = ({ data }) => {
       port.postMessage({ type: 'result', selectionToken, revision, result, evaluationMs: performance.now() - started })
     } catch (error) {
       port.postMessage({ type: 'calculationError', selectionToken, revision, message: describe(error) })
+    }
+  } else if (data.type === 'comparePlans') {
+    const { selectionToken, comparisonRequestId, planAId, planBId, planeA, planeB } = data
+    const identity = { selectionToken, comparisonRequestId, planAId, planBId }
+    try {
+      if (!active || active.selectionToken !== selectionToken) {
+        throw new Error('Worker is not ready for this selection.')
+      }
+      const result = comparePlans(active.preparedCase, planeA, planeB)
+      port.postMessage({ type: 'comparePlansResult', ...identity, result })
+    } catch (error) {
+      port.postMessage({ type: 'comparePlansError', ...identity, message: describe(error) })
     }
   }
 }

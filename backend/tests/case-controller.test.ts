@@ -8,9 +8,10 @@ import { bindPlaneControls, planeGeometry, planeReadouts, presetPlane } from '..
 import type { PlaneControlElements } from '../src/plane-controls.ts'
 import type { ResectionPlane } from '../src/plane.ts'
 import { PlanSession } from '../src/plan-session.ts'
+import type { SavedPlan } from '../src/plan-session.ts'
 import { createResectionScene } from '../src/resection-viewer.ts'
 import { PreparedCase } from '../src/volumetry.ts'
-import type { EvaluateVolumetry, VolumetryWorkerResponse } from '../src/volumetry-worker.ts'
+import type { ComparePlans, EvaluateVolumetry, VolumetryJob, VolumetryWorkerResponse } from '../src/volumetry-worker.ts'
 import type { VolumetryResult } from '../src/volumetry.ts'
 
 const catalog: LoadedCaseIndex = {
@@ -43,9 +44,13 @@ class FakeWorker {
   onerror: ((event: ErrorEvent) => void) | null = null
   onmessageerror: ((event: MessageEvent) => void) | null = null
   terminated = false
-  readonly jobs: EvaluateVolumetry[] = []
+  readonly dispatched: VolumetryJob[] = []
 
-  postMessage(job: EvaluateVolumetry) { this.jobs.push(job) }
+  get jobs(): EvaluateVolumetry[] {
+    return this.dispatched.filter(job => job.type === 'evaluate')
+  }
+
+  postMessage(job: VolumetryJob) { this.dispatched.push(job) }
   terminate() { this.terminated = true }
   emit(data: VolumetryWorkerResponse) { this.onmessage?.(new MessageEvent('message', { data })) }
   crash() { this.onmessageerror?.(new MessageEvent('messageerror')) }
@@ -109,6 +114,170 @@ function readyState(controller: CaseController) {
 function publishResult(worker: FakeWorker, job: EvaluateVolumetry) {
   worker.emit({ type: 'result', selectionToken: job.selectionToken, revision: job.revision, result })
 }
+
+function saved(id: string, overrides: Partial<SavedPlan> = {}): SavedPlan {
+  return { id, name: id, releaseId: 'demo', caseId: 'a', plane: planeAt(0), result, ...overrides }
+}
+
+function lastComparison(worker: FakeWorker): ComparePlans {
+  const job = worker.dispatched.at(-1)
+  if (job?.type !== 'comparePlans') throw new Error('Expected a comparison request.')
+  return job
+}
+
+const difference = { removedOnlyByAMl: 0, removedOnlyByBMl: 0, removedByBothMl: 0.4, retainedByBothMl: 0.6 }
+
+function comparisonReply(job: ComparePlans, volumes = difference): Extract<VolumetryWorkerResponse, { type: 'comparePlansResult' }> {
+  const { selectionToken, comparisonRequestId, planAId, planBId } = job
+  return { type: 'comparePlansResult', selectionToken, comparisonRequestId, planAId, planBId, result: volumes }
+}
+
+test('late comparison success and error leave active comparison data and status intact', async () => {
+  const { controller, ready, frame } = harness()
+  const workerA = await ready()
+  frame()
+  publishResult(workerA, workerA.jobs[0])
+  const [a, b, c] = ['a', 'b', 'c'].map(id => saved(id))
+  controller.selectComparison(a, b)
+  frame()
+  const firstAB = lastComparison(workerA)
+
+  controller.selectComparison(a, c)
+  workerA.emit(comparisonReply(firstAB))
+  assert.deepEqual(readyState(controller).comparison, { status: 'loading', pair: [a, c] })
+  frame()
+  const ac = lastComparison(workerA)
+  const acVolumes = { ...difference, removedOnlyByAMl: 0.2 }
+  workerA.emit(comparisonReply(ac, acVolumes))
+  assert.deepEqual(readyState(controller).comparison, { status: 'ready', pair: [a, c], result: acVolumes })
+
+  controller.selectComparison(a, b)
+  frame()
+  const { selectionToken, comparisonRequestId, planAId, planBId } = lastComparison(workerA)
+  const delayedError = new MessageEvent('message', { data: {
+    type: 'comparePlansError', selectionToken, comparisonRequestId, planAId, planBId, message: 'Old case failed',
+  } satisfies VolumetryWorkerResponse })
+  const oldListener = workerA.onmessage!
+  const workerB = await ready('b')
+  frame()
+  publishResult(workerB, workerB.jobs[0])
+  const d = saved('d', { caseId: 'b' })
+  const e = saved('e', { caseId: 'b' })
+  controller.selectComparison(d, e)
+  frame()
+  const de = lastComparison(workerB)
+  oldListener(delayedError)
+  assert.deepEqual(readyState(controller).comparison, { status: 'loading', pair: [d, e] })
+  const deVolumes = { ...difference, retainedByBothMl: 0.8 }
+  workerB.emit(comparisonReply(de, deVolumes))
+  oldListener(delayedError)
+  assert.deepEqual(readyState(controller).comparison, { status: 'ready', pair: [d, e], result: deVolumes })
+})
+
+test('comparison identity distinguishes repeated ordered selections and explicit retries', async () => {
+  const { controller, ready, frame } = harness()
+  const worker = await ready()
+  frame()
+  publishResult(worker, worker.jobs[0])
+  const [a, b, c] = ['a', 'b', 'c'].map(id => saved(id))
+
+  controller.selectComparison(a, b)
+  frame()
+  const first = lastComparison(worker)
+  controller.selectComparison(a, c)
+  controller.selectComparison(a, b)
+  controller.selectComparison(a, b)
+  worker.emit(comparisonReply(first))
+  assert.equal(readyState(controller).comparison.status, 'loading')
+  frame()
+  const last = lastComparison(worker)
+  assert.deepEqual([last.planAId, last.planBId], ['a', 'b'])
+  assert.equal(last.comparisonRequestId, first.comparisonRequestId + 2)
+  worker.emit({ ...comparisonReply(last), planAId: 'b', planBId: 'a' })
+  assert.equal(readyState(controller).comparison.status, 'loading')
+  const { selectionToken, comparisonRequestId, planAId, planBId } = last
+  worker.emit({ type: 'comparePlansError', selectionToken, comparisonRequestId, planAId, planBId, message: 'Failed' })
+  assert.deepEqual(readyState(controller).comparison, { status: 'error', pair: [a, b], message: 'Failed' })
+  controller.retryComparison()
+  frame()
+  const retry = lastComparison(worker)
+  assert.equal(retry.comparisonRequestId, last.comparisonRequestId + 1)
+  worker.emit(comparisonReply(retry))
+  assert.deepEqual(readyState(controller).comparison, { status: 'ready', pair: [a, b], result: difference })
+
+  for (const invalid of [a, saved('other case', { caseId: 'b' }), saved('other release', { releaseId: 'older' })]) {
+    controller.selectComparison(a, c)
+    controller.selectComparison(a, invalid)
+    assert.deepEqual(readyState(controller).comparison, { status: 'idle' })
+  }
+  frame()
+  assert.equal(lastComparison(worker), retry)
+})
+
+test('single worker slot drains latest plane before latest pair and isolates case changes', async () => {
+  const { controller, ready, frame } = harness()
+  const worker = await ready()
+  frame()
+  publishResult(worker, worker.jobs[0])
+  const [a, b, c, d] = ['a', 'b', 'c', 'd'].map(id => saved(id))
+  controller.selectComparison(a, b)
+  frame()
+  const first = lastComparison(worker)
+  controller.selectComparison(a, c)
+  controller.selectComparison(a, d)
+  controller.setPlane(planeAt(2))
+  frame()
+  assert.deepEqual(worker.dispatched.map(job => job.type), ['evaluate', 'comparePlans'])
+  worker.emit(comparisonReply(first))
+  frame()
+  assert.deepEqual(worker.dispatched.map(job => job.type), ['evaluate', 'comparePlans', 'evaluate'])
+  const evaluation = worker.jobs[1]
+  publishResult(worker, evaluation)
+  frame()
+  const last = lastComparison(worker)
+  assert.equal(last.planBId, 'd')
+  assert.equal(worker.dispatched.length, 4)
+
+  const oldListener = worker.onmessage!
+  const newWorker = await ready('b')
+  frame()
+  assert.equal(worker.terminated, true)
+  assert.equal(readyState(controller).comparison.status, 'idle')
+  controller.setPlane(planeAt(3))
+  oldListener(new MessageEvent('message', { data: comparisonReply(last) }))
+  frame()
+  assert.equal(newWorker.dispatched.length, 1)
+  publishResult(newWorker, newWorker.jobs[0])
+  frame()
+  assert.equal(newWorker.dispatched.length, 2)
+})
+
+test('comparison recovery waits for the still-active worker to initialise', async () => {
+  const { controller, ready, frame, loads, workers } = harness()
+  const worker = await ready()
+  frame()
+  publishResult(worker, worker.jobs[0])
+  controller.selectComparison(saved('a'), saved('b'))
+  frame()
+  const failed = lastComparison(worker)
+  worker.crash()
+  assert.equal(controller.state.status, 'loading')
+  loads.at(-1)!.resolve(makeBundle('a'))
+  await Promise.resolve()
+  const recovered = workers.at(-1)!
+  frame()
+  assert.equal(recovered.dispatched.length, 0)
+  recovered.emit({ type: 'ready', selectionToken: failed.selectionToken + 1 })
+  frame()
+  publishResult(recovered, recovered.jobs[0])
+  frame()
+  const retried = lastComparison(recovered)
+  assert.equal(retried.selectionToken, failed.selectionToken + 1)
+  assert.equal(retried.comparisonRequestId, failed.comparisonRequestId + 1)
+  assert.deepEqual([retried.planAId, retried.planBId], ['a', 'b'])
+  recovered.emit(comparisonReply(retried))
+  assert.equal(readyState(controller).comparison.status, 'ready')
+})
 
 test('late bundles and failed loads cannot take over the newer selection', async () => {
   const { controller, loads, workers, released, ready } = harness()

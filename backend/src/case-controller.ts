@@ -5,8 +5,9 @@ import type { ResectionPlane } from './plane.ts'
 import { defaultPlane, normalAtAngle, planeGeometry, pointAtOffset, presetPlane } from './plane-controls.ts'
 import type { PlanePreset } from './plane-controls.ts'
 import { startVolumetryWorker } from './volumetry-worker.ts'
-import type { EvaluateVolumetry, VolumetryWorkerResponse } from './volumetry-worker.ts'
-import type { VolumetryResult } from './volumetry.ts'
+import type { ComparePlans, ComparisonIdentity, EvaluateVolumetry, VolumetryJob, VolumetryWorkerResponse } from './volumetry-worker.ts'
+import type { PlanDifferenceResult, VolumetryResult } from './volumetry.ts'
+import type { SavedPlan } from './plan-session.ts'
 
 export type CaseMeshes = Pick<CaseBundle, 'liver' | 'tumour'>
 type CaseAssets = CaseMeshes & Pick<CaseBundle, 'metadata'>
@@ -17,11 +18,20 @@ export type Measurements =
   | { readonly status: 'ready'; readonly result: VolumetryResult }
   | { readonly status: 'unavailable'; readonly message: string }
 
+export type ComparisonPair = readonly [SavedPlan, SavedPlan]
+
+export type ComparisonState =
+  | { readonly status: 'idle' }
+  | { readonly status: 'loading'; readonly pair: ComparisonPair }
+  | { readonly status: 'ready'; readonly pair: ComparisonPair; readonly result: PlanDifferenceResult }
+  | { readonly status: 'error'; readonly pair: ComparisonPair; readonly message: string }
+
 type ReadyCase = Selection & CaseAssets & {
   readonly status: 'ready'
   readonly plane: ResectionPlane
   readonly revision: number
   readonly measurements: Measurements
+  readonly comparison: ComparisonState
 }
 
 export type CaseState =
@@ -34,7 +44,7 @@ type WorkerPort = {
   onmessage: ((event: MessageEvent<VolumetryWorkerResponse>) => void) | null
   onerror: ((event: ErrorEvent) => void) | null
   onmessageerror: ((event: MessageEvent) => void) | null
-  postMessage(message: EvaluateVolumetry): void
+  postMessage(message: VolumetryJob): void
   terminate(): void
 }
 
@@ -50,6 +60,11 @@ function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+function matchesComparison(a: ComparisonIdentity, b: ComparisonIdentity): boolean {
+  return a.selectionToken === b.selectionToken && a.comparisonRequestId === b.comparisonRequestId
+    && a.planAId === b.planAId && a.planBId === b.planBId
+}
+
 export class CaseController {
   readonly #catalog: LoadedCaseIndex
   readonly #dependencies: ControllerDependencies
@@ -57,13 +72,17 @@ export class CaseController {
   #state: CaseState = { status: 'idle' }
   #selectionToken = 0
   #revision = 0
+  #comparisonRequestId = 0
   #abort?: AbortController
   #assets?: CaseAssets
   #worker?: WorkerPort
   #frame?: number
-  #pending?: EvaluateVolumetry
-  #inFlight?: EvaluateVolumetry
+  #pendingEvaluation?: EvaluateVolumetry
+  #pendingComparison?: ComparePlans
+  #inFlight?: VolumetryJob
   #desiredPlane?: ResectionPlane
+  #desiredPair?: ComparisonPair
+  #currentComparison?: ComparePlans
   #mayRecover = true
 
   constructor(catalog: LoadedCaseIndex, dependencies: Partial<ControllerDependencies> = {}) {
@@ -88,7 +107,33 @@ export class CaseController {
   }
 
   selectCase(caseId: string): Promise<void> {
+    this.#desiredPair = undefined
     return this.#load(caseId, undefined, true)
+  }
+
+  selectComparison(planA?: SavedPlan, planB?: SavedPlan): void {
+    const state = this.#state
+    if (state.status !== 'ready') return
+    if (!planA || !planB || planA.id === planB.id || [planA, planB].some(plan => (
+      plan.caseId !== state.caseId || plan.releaseId !== state.metadata.releaseId
+    ))) {
+      this.#desiredPair = undefined
+      this.#pendingComparison = this.#currentComparison = undefined
+      if (state.comparison.status !== 'idle') this.#publish({ ...state, comparison: { status: 'idle' } })
+      return
+    }
+    if (this.#desiredPair?.[0].id === planA.id && this.#desiredPair[1].id === planB.id) return
+    const comparison = this.#queueComparison(state, [planA, planB])
+    this.#publish({ ...state, comparison })
+    this.#scheduleFrame()
+  }
+
+  retryComparison(): void {
+    const state = this.#state
+    if (state.status !== 'ready' || state.comparison.status !== 'error') return
+    const comparison = this.#queueComparison(state, state.comparison.pair)
+    this.#publish({ ...state, comparison })
+    this.#scheduleFrame()
   }
 
   setPlane(input: ResectionPlane): boolean {
@@ -154,6 +199,7 @@ export class CaseController {
     ++this.#selectionToken
     this.#clearActive()
     this.#desiredPlane = undefined
+    this.#desiredPair = undefined
     this.#publish({ status: 'idle' })
     this.#listeners.clear()
   }
@@ -206,14 +252,25 @@ export class CaseController {
     if (message.type === 'ready') {
       if (this.#state.status !== 'loading' || !this.#assets) return
       const plane = this.#desiredPlane ?? defaultPlane(this.#assets.liver.bounds)
-      this.#queueMeasurement({ status: 'ready', ...selection, ...this.#assets }, plane)
+      const comparison = this.#desiredPair
+        ? this.#queueComparison(selection, this.#desiredPair) : { status: 'idle' } as const
+      this.#queueMeasurement({ status: 'ready', ...selection, ...this.#assets, comparison }, plane)
       return
     }
-    if (this.#inFlight?.revision !== message.revision) return
+    const job = this.#inFlight
+    if (message.type === 'comparePlansResult' || message.type === 'comparePlansError') {
+      if (job?.type !== 'comparePlans' || !matchesComparison(job, message)) return
+      this.#inFlight = undefined
+      this.#finishComparison(message, message.type === 'comparePlansResult'
+        ? { result: message.result } : { message: message.message })
+      this.#scheduleFrame()
+      return
+    }
+    if (job?.type !== 'evaluate' || job.revision !== message.revision) return
     this.#inFlight = undefined
     const state = this.#state
     if (state.status === 'ready' && message.revision === state.revision) {
-      if (message.type === 'result') this.#mayRecover = true
+      if (message.type === 'result' && state.comparison.status !== 'loading') this.#mayRecover = true
       const measurements: Measurements = message.type === 'result'
         ? { status: 'ready', result: message.result }
         : { status: 'unavailable', message: message.message }
@@ -226,27 +283,55 @@ export class CaseController {
     plane: ResectionPlane): void {
     const revision = ++this.#revision
     this.#desiredPlane = plane
-    this.#pending = { type: 'evaluate', selectionToken: state.selectionToken, revision, plane }
+    this.#pendingEvaluation = { type: 'evaluate', selectionToken: state.selectionToken, revision, plane }
     this.#publish({ ...state, plane, revision, measurements: { status: 'updating' } })
     this.#scheduleFrame()
   }
 
+  #queueComparison(selection: Selection, pair: ComparisonPair): ComparisonState {
+    const [a, b] = pair
+    this.#desiredPair = pair
+    this.#currentComparison = this.#pendingComparison = {
+      type: 'comparePlans', selectionToken: selection.selectionToken,
+      comparisonRequestId: ++this.#comparisonRequestId,
+      planAId: a.id, planBId: b.id, planeA: a.plane, planeB: b.plane,
+    }
+    return { status: 'loading', pair }
+  }
+
+  #finishComparison(identity: ComparisonIdentity, outcome: { result: PlanDifferenceResult } | { message: string }): void {
+    const state = this.#state
+    const current = this.#currentComparison
+    if (state.status !== 'ready' || state.comparison.status !== 'loading'
+        || !current || !matchesComparison(current, identity)) return
+    const { pair } = state.comparison
+    if ('result' in outcome) this.#mayRecover = true
+    const comparison: ComparisonState = 'result' in outcome
+      ? { status: 'ready', pair, result: outcome.result }
+      : { status: 'error', pair, message: outcome.message }
+    this.#publish({ ...state, comparison })
+  }
+
   #scheduleFrame(): void {
     const worker = this.#worker
-    if (!worker || !this.#pending || this.#inFlight || this.#frame !== undefined) return
+    if (!worker || (!this.#pendingEvaluation && !this.#pendingComparison)
+        || this.#inFlight || this.#frame !== undefined) return
     this.#frame = this.#dependencies.requestFrame(() => {
       if (worker !== this.#worker) return
       this.#frame = undefined
-      const job = this.#pending
+      const job = this.#pendingEvaluation ?? this.#pendingComparison
       if (!job || this.#inFlight) return
-      this.#pending = undefined
+      if (job.type === 'evaluate') this.#pendingEvaluation = undefined
+      else this.#pendingComparison = undefined
       this.#inFlight = job
       try {
         worker.postMessage(job)
       } catch (error) {
         this.#inFlight = undefined
         const state = this.#state
-        if (state.status === 'ready' && state.revision === job.revision) {
+        if (job.type === 'comparePlans') {
+          this.#finishComparison(job, { message: describe(error) })
+        } else if (state.status === 'ready' && state.revision === job.revision) {
           this.#publish({ ...state, measurements: { status: 'unavailable', message: describe(error) } })
         }
         this.#scheduleFrame()
@@ -269,7 +354,7 @@ export class CaseController {
     this.#abort = undefined
     if (this.#frame !== undefined) this.#dependencies.cancelFrame(this.#frame)
     this.#frame = undefined
-    this.#pending = this.#inFlight = undefined
+    this.#pendingEvaluation = this.#pendingComparison = this.#inFlight = this.#currentComparison = undefined
     const worker = this.#worker
     this.#worker = undefined
     if (worker) {

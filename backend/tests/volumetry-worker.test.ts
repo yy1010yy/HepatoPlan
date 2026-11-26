@@ -5,7 +5,7 @@ import type { TestContext } from 'node:test'
 import { Worker as NodeWorker } from 'node:worker_threads'
 import type { CaseMetadata } from '../src/case-contract.ts'
 import { startVolumetryWorker } from '../src/volumetry-worker.ts'
-import type { EvaluateVolumetry, VolumetryWorkerResponse } from '../src/volumetry-worker.ts'
+import type { ComparePlans, EvaluateVolumetry, VolumetryWorkerResponse } from '../src/volumetry-worker.ts'
 
 const metadata: CaseMetadata = {
   schemaVersion: 1, releaseId: 'demo-1', caseId: 'case-001',
@@ -88,4 +88,27 @@ test('worker distinguishes initialization errors from calculation errors', async
   assert.deepEqual(await receive(worker), {
     type: 'calculationError', selectionToken: 3, revision: 8, message: 'Worker is not ready for this selection.',
   })
+})
+
+test('worker compares ordered snapshots using its transferred mask and echoes request identities', async t => {
+  useBrowserAdapter(t)
+  const labels = new Uint8Array([1, 1, 2]).buffer
+  const worker = startVolumetryWorker(4, metadata, labels) as unknown as NodeWorker
+  t.after(async () => { await worker.terminate() })
+  assert.equal(labels.byteLength, 0)
+  assert.deepEqual(await receive(worker), { type: 'ready', selectionToken: 4 })
+
+  const identity = { selectionToken: 4, comparisonRequestId: 10, planAId: 'a', planBId: 'b' }
+  const request: ComparePlans = {
+    type: 'comparePlans', ...identity, planeA: evaluate.plane, planeB: { ...evaluate.plane, resectSide: 'negative' },
+  }
+  const result = { removedOnlyByAMl: 0.001, removedOnlyByBMl: 0.001, removedByBothMl: 0, retainedByBothMl: 0 }
+  worker.postMessage(request)
+  assert.deepEqual(await receive(worker), { type: 'comparePlansResult', ...identity, result })
+  worker.postMessage({ ...request, comparisonRequestId: 11, planeB: { ...request.planeB, unitNormal: [0, 0, 0] } })
+  assert.deepEqual(await receive(worker), {
+    type: 'comparePlansError', ...identity, comparisonRequestId: 11, message: 'Plane normal must be nonzero.',
+  })
+  worker.postMessage({ ...request, comparisonRequestId: 12 })
+  assert.deepEqual(await receive(worker), { type: 'comparePlansResult', ...identity, comparisonRequestId: 12, result })
 })

@@ -4,7 +4,11 @@ import { resolve } from 'node:path'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import type { CaseIndex, CaseMetadata } from '../src/case-contract.ts'
+import { volumeFormatter } from '../src/measurements-panel.ts'
+import { differenceRegions } from '../src/plan-difference-panel.ts'
 import type { SavedPlan } from '../src/plan-session.ts'
+import type { PlanDifferenceResult } from '../src/volumetry.ts'
+import { colourPositions, comparisonVolumes } from './comparison-observations.ts'
 
 const root = resolve('.local/research-public/cases')
 const targetMs = 150
@@ -178,4 +182,104 @@ test('prepared research release, demo workflow, and responsiveness', async ({ pa
   }
   await writeFile(resolve('.local/task-6-verification.json'), JSON.stringify(report, null, 2) + '\n')
   console.log(JSON.stringify({ ...report, samples: undefined }, null, 2))
+})
+
+function verifyReconciliation(volumes: PlanDifferenceResult, a: SavedPlan, b: SavedPlan) {
+  const { removedOnlyByAMl: onlyA, removedOnlyByBMl: onlyB, removedByBothMl: both, retainedByBothMl: neither } = volumes
+  const total = onlyA + onlyB + both + neither
+  for (const [actual, expected] of [
+    [total, a.result.totalParenchymaMl], [total, b.result.totalParenchymaMl],
+    [onlyA + both, a.result.resectedMl], [onlyB + neither, a.result.remainingMl],
+    [onlyB + both, b.result.resectedMl], [onlyA + neither, b.result.remainingMl],
+  ]) {
+    expect(Math.abs(actual - expected)).toBeLessThanOrEqual(1e-9)
+  }
+}
+
+test('prepared BT-28 case reconciles A/B volumes before and after a plan change', async ({ page, browser }, testInfo) => {
+  test.setTimeout(90_000)
+  const caseId = 'case-001'
+  const browserErrors: string[] = []
+  page.on('pageerror', error => browserErrors.push(error.message))
+  page.on('console', message => {
+    if (message.type() === 'error') browserErrors.push(`${message.location().url} ${message.text()}`)
+  })
+  await page.goto('/browser-tests/fixture.html?research=1')
+  await expect(page.locator('#status')).toHaveText('Select a case')
+  await openCase(page, caseId)
+
+  const a = await savePlan(page, 'Centre, positive side')
+  await page.getByRole('button', { name: 'Flip removal side' }).click()
+  await page.getByRole('slider', { name: 'Plane Angle' }).press('ArrowUp')
+  const b = await savePlan(page, 'Tilted centre, negative side')
+  expect(a.plane.unitNormal).not.toEqual(b.plane.unitNormal)
+  await page.getByRole('button', { name: 'Negative offset' }).click()
+  const c = await savePlan(page, 'Shifted cut, negative side')
+
+  const legend = page.getByRole('region', { name: 'Geometric comparison' })
+  const format = volumeFormatter()
+  async function verifyLegend(volumes: PlanDifferenceResult) {
+    for (const field of Object.keys(differenceRegions) as (keyof PlanDifferenceResult)[]) {
+      await expect(legend.getByText(`${differenceRegions[field].label} ${format(volumes[field])}`, { exact: true })).toBeVisible()
+    }
+  }
+
+  await page.getByLabel('Show Differences').check()
+  await page.getByLabel('Liver Opacity').fill('1')
+  await page.getByRole('button', { name: 'Compare plans' }).click()
+  await expect(page.locator('#comparison')).toContainText('Future Liver Remnant')
+  const volumes = await comparisonVolumes(page, [a.id, b.id])
+  verifyReconciliation(volumes, a, b)
+  await verifyLegend(volumes)
+  expect(volumes.removedOnlyByAMl).toBeGreaterThan(0)
+  expect(volumes.removedOnlyByBMl).toBeGreaterThan(0)
+
+  const canvas = page.locator('#viewer canvas')
+  const before = await canvas.screenshot()
+  const box = (await canvas.boundingBox())!
+  const x = box.x + box.width / 2
+  const y = box.y + box.height / 2
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x + 30, y + 10, { steps: 5 })
+  await page.mouse.up()
+  const rotated = await canvas.screenshot()
+  expect(rotated.equals(before)).toBe(false)
+  const colours = await colourPositions(page, rotated, 'comparison')
+  expect(colours.orange).toBeGreaterThan(100)
+  expect(colours.teal).toBeGreaterThan(100)
+  await testInfo.attach('initial pair after rotating', { body: rotated, contentType: 'image/png' })
+
+  const loading = await page.getByRole('combobox', { name: 'Plan B' }).evaluate((select: HTMLSelectElement, planId) => {
+    // Read the synchronous UI update before the worker is allowed to complete.
+    select.value = planId
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    const status = document.getElementById('difference-status')?.textContent
+    const raw = document.getElementById('comparison-result')?.textContent
+    const values = Array.from(document.querySelectorAll('#difference-rows li span:last-child'), el => el.textContent)
+    return { status, raw, values }
+  }, c.id)
+  expect(loading).toEqual({ status: 'Updating…', raw: '', values: ['', '', '', ''] })
+  const updated = await comparisonVolumes(page, [a.id, c.id])
+  expect(updated).not.toEqual(volumes)
+  verifyReconciliation(updated, a, c)
+  await verifyLegend(updated)
+  await expect(legend.getByRole('status')).toBeEmpty()
+  await testInfo.attach('legend after changing Plan B', { body: await legend.screenshot(), contentType: 'image/png' })
+  expect(browserErrors).toEqual([])
+
+  const report = {
+    releaseId: a.releaseId, caseId,
+    device: { cpu: os.cpus()[0]?.model.trim(), platform: os.platform(), arch: os.arch() },
+    browser: `Chrome ${browser.version()}, headless software WebGL`,
+    totalParenchymaMl: a.result.totalParenchymaMl,
+    initial: { planIds: [a.id, b.id], volumes, savedMeasurements: [a.result, b.result] },
+    updated: { planIds: [a.id, c.id], volumes: updated, savedMeasurements: [a.result, c.result] },
+    reconciliationToleranceMl: 1e-9,
+  }
+  await writeFile(resolve('.local/task-7-comparison-verification.json'), JSON.stringify(report, null, 2) + '\n')
+  console.log(JSON.stringify({
+    releaseId: report.releaseId, caseId, totalParenchymaMl: report.totalParenchymaMl,
+    initial: { planIds: report.initial.planIds, volumes }, updated: { planIds: report.updated.planIds, volumes: updated },
+  }, null, 2))
 })

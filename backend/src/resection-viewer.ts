@@ -1,11 +1,13 @@
 import {
-  AmbientLight, BufferAttribute, BufferGeometry, DirectionalLight, DoubleSide, Group,
+  AmbientLight, BufferAttribute, BufferGeometry, Color, DirectionalLight, DoubleSide, Group,
   Mesh, MeshBasicMaterial, MeshStandardMaterial, PerspectiveCamera, Plane,
-  PlaneGeometry, Scene, Vector3, WebGLRenderer,
+  PlaneGeometry, Scene, Vector3, Vector4, WebGLRenderer,
 } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { DecodedMesh } from './binary-stl.ts'
-import type { CaseController, CaseState } from './case-controller.ts'
+import type { CaseController, CaseState, ComparisonPair } from './case-controller.ts'
+import { differenceRegions } from './plan-difference-panel.ts'
+import type { ResectionPlane } from './plane.ts'
 
 const removedColour = 0xe38558
 const remainingColour = 0x50a89f
@@ -16,6 +18,43 @@ function geometryFor(mesh: DecodedMesh): BufferGeometry {
   geometry.setAttribute('position', new BufferAttribute(mesh.positions, 3))
   geometry.computeVertexNormals()
   return geometry
+}
+
+function setRemovalEquation(equation: Vector4, plane: ResectionPlane) {
+  const { pointMm: [px, py, pz], unitNormal: [x, y, z], resectSide } = plane
+  const sign = resectSide === 'positive' ? 1 : -1
+  equation.set(sign * x, sign * y, sign * z, -sign * (x * px + y * py + z * pz))
+}
+
+function enableComparisonShader(material: MeshStandardMaterial, planeA: Vector4, planeB: Vector4) {
+  const uniforms = {
+    comparisonPlaneA: { value: planeA },
+    comparisonPlaneB: { value: planeB },
+    comparisonOnlyA: { value: new Color(differenceRegions.removedOnlyByAMl.colour) },
+    comparisonOnlyB: { value: new Color(differenceRegions.removedOnlyByBMl.colour) },
+    comparisonRemoved: { value: new Color(differenceRegions.removedByBothMl.colour) },
+    comparisonRetained: { value: new Color(differenceRegions.retainedByBothMl.colour) },
+  }
+  material.onBeforeCompile = shader => {
+    Object.assign(shader.uniforms, uniforms)
+    shader.vertexShader = `varying vec3 comparisonWorldPosition;\n` + shader.vertexShader.replace(
+      '#include <project_vertex>',
+      '#include <project_vertex>\ncomparisonWorldPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;',
+    )
+    shader.fragmentShader = /* glsl */`
+      varying vec3 comparisonWorldPosition;
+      uniform vec4 comparisonPlaneA, comparisonPlaneB;
+      uniform vec3 comparisonOnlyA, comparisonOnlyB, comparisonRemoved, comparisonRetained;
+    ` + shader.fragmentShader.replace('#include <color_fragment>', /* glsl */`
+      #include <color_fragment>
+      vec4 comparisonPosition = vec4(comparisonWorldPosition, 1.0);
+      bool removedByA = dot(comparisonPlaneA, comparisonPosition) > 0.0;
+      bool removedByB = dot(comparisonPlaneB, comparisonPosition) > 0.0;
+      diffuseColor.rgb = removedByA
+        ? (removedByB ? comparisonRemoved : comparisonOnlyA)
+        : (removedByB ? comparisonOnlyB : comparisonRetained);
+    `)
+  }
 }
 
 export function createResectionScene(aspect = 1) {
@@ -36,6 +75,11 @@ export function createResectionScene(aspect = 1) {
   })
   const negativeMaterial = positiveMaterial.clone()
   negativeMaterial.clippingPlanes = [negativePlane]
+  const comparisonMaterial = positiveMaterial.clone()
+  comparisonMaterial.clippingPlanes = null
+  const planeA = new Vector4()
+  const planeB = new Vector4()
+  enableComparisonShader(comparisonMaterial, planeA, planeB)
   const tumourMaterial = new MeshStandardMaterial({ color: 0xe54678, roughness: 0.7 })
   const overlayMaterial = new MeshBasicMaterial({
     color: 0x70c4f3, opacity: 0.19, transparent: true, side: DoubleSide, depthWrite: false,
@@ -48,6 +92,10 @@ export function createResectionScene(aspect = 1) {
   let selectionToken: number | undefined
   let liverGeometry: BufferGeometry | undefined
   let tumourGeometry: BufferGeometry | undefined
+  let positiveMesh: Mesh<BufferGeometry, MeshStandardMaterial> | undefined
+  let negativeMesh: Mesh<BufferGeometry, MeshStandardMaterial> | undefined
+  let comparisonPair: ComparisonPair | undefined
+  let showComparison = false
   let showOverlay = true
   let revision: number | undefined
 
@@ -56,8 +104,19 @@ export function createResectionScene(aspect = 1) {
     liverGeometry?.dispose()
     tumourGeometry?.dispose()
     liverGeometry = tumourGeometry = undefined
+    positiveMesh = negativeMesh = undefined
+    comparisonPair = undefined
     selectionToken = revision = undefined
     overlay.visible = false
+  }
+
+  function updateMode() {
+    const comparing = showComparison && comparisonPair !== undefined
+    if (positiveMesh && negativeMesh) {
+      positiveMesh.material = comparing ? comparisonMaterial : positiveMaterial
+      negativeMesh.visible = !comparing
+    }
+    overlay.visible = showOverlay && !comparing && selectionToken !== undefined
   }
 
   function update(state: CaseState): boolean {
@@ -71,13 +130,13 @@ export function createResectionScene(aspect = 1) {
       clearCase()
       liverGeometry = geometryFor(state.liver)
       tumourGeometry = geometryFor(state.tumour)
-      const positive = new Mesh(liverGeometry, positiveMaterial)
-      const negative = new Mesh(liverGeometry, negativeMaterial)
+      positiveMesh = new Mesh(liverGeometry, positiveMaterial)
+      negativeMesh = new Mesh(liverGeometry, negativeMaterial)
       const tumour = new Mesh(tumourGeometry, tumourMaterial)
-      positive.name = 'liver-positive'
-      negative.name = 'liver-negative'
+      positiveMesh.name = 'liver-positive'
+      negativeMesh.name = 'liver-negative'
       tumour.name = 'tumour'
-      anatomy.add(positive, negative, tumour)
+      anatomy.add(positiveMesh, negativeMesh, tumour)
 
       const min = new Vector3(...state.liver.bounds.min)
       const max = new Vector3(...state.liver.bounds.max)
@@ -105,9 +164,15 @@ export function createResectionScene(aspect = 1) {
       negativeMaterial.color.setHex(resectSide === 'negative' ? removedColour : remainingColour)
       overlay.position.copy(point)
       overlay.quaternion.setFromUnitVectors(localZ, normal)
-      overlay.visible = showOverlay
       revision = state.revision
     }
+    const pair = state.comparison.status === 'idle' ? undefined : state.comparison.pair
+    if (pair && pair !== comparisonPair) {
+      setRemovalEquation(planeA, pair[0].plane)
+      setRemovalEquation(planeB, pair[1].plane)
+    }
+    comparisonPair = pair
+    updateMode()
     return newCase
   }
 
@@ -115,13 +180,19 @@ export function createResectionScene(aspect = 1) {
     scene, camera, target, update,
     setPlaneVisible(visible: boolean) {
       showOverlay = visible
-      overlay.visible = visible && selectionToken !== undefined
+      updateMode()
+    },
+    setComparisonVisible(visible: boolean) {
+      if (showComparison === visible) return false
+      showComparison = visible
+      updateMode()
+      return true
     },
     setLiverOpacity(opacity: number) {
       if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) {
         throw new RangeError('Liver opacity must be between 0 and 1.')
       }
-      for (const material of [positiveMaterial, negativeMaterial]) {
+      for (const material of [positiveMaterial, negativeMaterial, comparisonMaterial]) {
         material.opacity = opacity
         const transparent = opacity < 1
         if (material.transparent !== transparent) {
@@ -137,6 +208,7 @@ export function createResectionScene(aspect = 1) {
       overlayMaterial.dispose()
       positiveMaterial.dispose()
       negativeMaterial.dispose()
+      comparisonMaterial.dispose()
       tumourMaterial.dispose()
     },
   }
@@ -182,6 +254,7 @@ export function mountResectionViewer(container: HTMLElement, controller: Pick<Ca
 
   return {
     setPlaneVisible(visible: boolean) { view.setPlaneVisible(visible); requestRender() },
+    setComparisonVisible(visible: boolean) { if (view.setComparisonVisible(visible)) requestRender() },
     setLiverOpacity(opacity: number) { view.setLiverOpacity(opacity); requestRender() },
     dispose() {
       unsubscribe()
