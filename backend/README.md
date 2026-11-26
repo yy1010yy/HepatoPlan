@@ -97,3 +97,21 @@ Framework components can call `setPlaneOffset`, `setPlaneAngle`, `applyPlanePres
 Call `mountResectionViewer(container, controller)` in the browser with a sized container. It mounts a Three.js canvas with orbit, pan, and zoom, then renders the liver halves and tumour in the case's physical frame. `setPlaneVisible` toggles the overlay and `setLiverOpacity` accepts values from 0 to 1. Call the returned `dispose` method when removing the viewer.
 
 Create one `PlanSession` per controller. Use `save({ name, procedureType, reason, notes })` after measurements are ready and `list()` to populate the plan selector for the active case. Pass the selected ID to `open` to restore its plane and request fresh measurements. Pass two or more distinct IDs to `compare` for labelled rows in selection order. Use plan IDs as selector values because two plans may have the same name.
+
+## Run the synthetic browser checks
+
+From `backend/`, run `npx playwright install chromium` once, then run `npm run test:browser`. On Windows with Chrome already installed, you can set `$env:PLAYWRIGHT_CHANNEL = 'chrome'` before running the suite. Playwright starts a loopback Vite server and runs the test page in headless Chromium with software WebGL.
+
+The browser tests supply synthetic cases over HTTP and exercise the real viewer and worker. The regular `npm test` suite covers delayed case and worker responses, animation-frame scheduling, and calculation retry deterministically. Both suites run independently of the Task03 Liver dataset.
+
+## Verify the local research release and demo
+
+Publish the three-case release to `backend/.local/research-public/cases` with the offline exporter. From `backend/`, opt in to the research browser test.
+
+```powershell
+$env:PLAYWRIGHT_CHANNEL = 'chrome'
+$env:HEPATOPLAN_RESEARCH_TEST = '1'
+npm run test:browser -- research.spec.ts
+```
+
+The test loads every case through the selector, runs the demo on `case-002`, and records case load, worker calculation, and input-to-rendered-result timings in `.local/task-6-verification.json`. The report uses 20 slider actions and 10 preset actions for its p95. If the 150 ms target is missed, the test repeats those actions with rendering disabled to help isolate the difference.

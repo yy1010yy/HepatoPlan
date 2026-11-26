@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>HepatoPlan synthetic workflow test</title>
+<style>
+  #viewer { width: 480px; height: 340px; background: #18202a; }
+  label { display: inline-block; margin: 4px; }
+  pre { white-space: pre-wrap; }
+</style>
+<p>Experimental geometry and volumes for research and education.</p>
+<div id="viewer"></div>
+<label>Case <select id="case"><option value="">Select a case</option></select></label>
+<button id="retry-index">Retry index</button>
+<button id="retry-case">Retry case or calculation</button>
+<output id="status"></output>
+<div>
+  <label>Plane Offset <input id="offset"><output id="offset-value"></output></label>
+  <label>Plane Angle <input id="angle"><output id="angle-value"></output></label>
+  <button id="flip">Flip removal side</button>
+  <button id="reset">Reset plane</button>
+  <button id="negative"></button><button id="centre"></button><button id="positive"></button>
+  <label>Show Plane <input id="overlay" type="checkbox" checked></label>
+  <label>Liver Opacity <input id="opacity" type="range" min="0" max="1" step="0.05" value="0.55"></label>
+</div>
+<div>
+  <label>Plan name <input id="name"></label><button id="save" disabled>Save plan</button>
+  <label>Plan A <select id="plan-a"></select></label><label>Plan B <select id="plan-b"></select></label>
+  <button id="open">Open Plan A</button><button id="compare">Compare plans</button>
+</div>
+<pre id="results"></pre><pre id="comparison"></pre>
+<div>
+  <output id="revision"></output><output id="dispatches">0</output>
+  <output id="saved-plan"></output><button id="crash">Simulate worker crash</button>
+  <output id="last-timing" hidden></output>
+</div>
+<script type="module" src="./fixture.ts"></script>
+</html>

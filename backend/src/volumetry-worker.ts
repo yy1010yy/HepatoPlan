@@ -21,7 +21,7 @@ export type VolumetryWorkerRequest = InitialiseVolumetry | EvaluateVolumetry
 export type VolumetryWorkerResponse =
   | { type: 'ready'; selectionToken: number }
   | { type: 'initialisationError'; selectionToken: number; message: string }
-  | { type: 'result'; selectionToken: number; revision: number; result: VolumetryResult }
+  | { type: 'result'; selectionToken: number; revision: number; result: VolumetryResult; evaluationMs?: number }
   | { type: 'calculationError'; selectionToken: number; revision: number; message: string }
 
 export function startVolumetryWorker(

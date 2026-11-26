@@ -29,8 +29,9 @@ port.onmessage = ({ data }) => {
       if (!active || active.selectionToken !== selectionToken) {
         throw new Error('Worker is not ready for this selection.')
       }
+      const started = performance.now()
       const result = active.preparedCase.evaluate(plane)
-      port.postMessage({ type: 'result', selectionToken, revision, result })
+      port.postMessage({ type: 'result', selectionToken, revision, result, evaluationMs: performance.now() - started })
     } catch (error) {
       port.postMessage({ type: 'calculationError', selectionToken, revision, message: describe(error) })
     }
