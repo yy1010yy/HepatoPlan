@@ -9,5 +9,5 @@
     "allowImportingTsExtensions": true,
     "types": ["node"]
   },
-  "include": ["**/*.mts", "../frontend/scripts/verify-analysis-proxy.mts"]
+  "include": ["**/*.mts", "**/*.ts", "../frontend/scripts/verify-analysis-proxy.mts"]
 }

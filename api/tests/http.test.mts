@@ -5,6 +5,8 @@ import type { TestContext } from 'node:test'
 import { createAnalysisApp } from '../app.mts'
 import { createGeminiProvider } from '../gemini.mts'
 import type { ProviderInput } from '../gemini.mts'
+import planHandler from '../plans/explain.ts'
+import comparisonHandler from '../plan-comparisons/explain.ts'
 import { isAnalysisResponse } from '../../frontend/src/planning/analysis-contract.ts'
 import { isComparisonAnalysisRequest, isSingleAnalysisRequest } from '../../frontend/src/planning/analysis-contract.ts'
 import fixture from '../../fixtures/plan-analysis-v2.json' with { type: 'json' }
@@ -13,16 +15,20 @@ const { single, comparison } = fixture
 const singlePath = '/api/plans/explain'
 const comparePath = '/api/plan-comparisons/explain'
 
-async function serve(t: TestContext, options: Partial<Parameters<typeof createAnalysisApp>[0]> = {}) {
-  const server = createAnalysisApp({
-    findTumourCount: (release, caseId) => release === 'demo-1' && caseId === 'case-002' ? 100 : undefined,
-    log: () => {}, ...options,
-  }).listen(0, '127.0.0.1')
+async function listen(t: TestContext, app: ReturnType<typeof createAnalysisApp>) {
+  const server = app.listen(0, '127.0.0.1')
   t.after(() => new Promise<void>(resolve => server.close(() => resolve())))
   await once(server, 'listening')
   const address = server.address()
   assert(address && typeof address !== 'string')
   return `http://127.0.0.1:${address.port}`
+}
+
+function serve(t: TestContext, options: Partial<Parameters<typeof createAnalysisApp>[0]> = {}) {
+  return listen(t, createAnalysisApp({
+    findTumourCount: (release, caseId) => release === 'demo-1' && caseId === 'case-002' ? 100 : undefined,
+    log: () => {}, ...options,
+  }))
 }
 
 function post(origin: string, path: string, input: unknown) {
@@ -37,6 +43,18 @@ function geminiReply(selection: unknown) {
     usageMetadata: { promptTokenCount: 99, candidatesTokenCount: 12, thoughtsTokenCount: 3 },
   })
 }
+
+test('the Vercel entry points serve the published analysis URLs and validate requests', async t => {
+  for (const [path, handler] of [[singlePath, planHandler], [comparePath, comparisonHandler]] as const) {
+    const origin = await listen(t, handler)
+    const wrongMethod = await fetch(new URL(path, origin))
+    assert.equal(wrongMethod.status, 405)
+    assert.equal(wrongMethod.headers.get('Allow'), 'POST')
+    const badRequest = await post(origin, path, {})
+    assert.equal(badRequest.status, 400)
+    assert.deepEqual(await badRequest.json(), { error: 'invalid_analysis_request' })
+  }
+})
 
 test('both endpoints call Gemini with only approved evidence and return verified recommendations', async t => {
   const sent: string[] = []

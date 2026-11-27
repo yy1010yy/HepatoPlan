@@ -167,6 +167,12 @@ The test loads every case through the selector, runs the demo on `case-002`, and
 
 Set `HEPATOPLAN_RESEARCH_PUBLIC_DIR` from `frontend/` to override the prepared **public root** containing `cases/index.json`. Both Vite and the research tests use that location. Reports are written under `backend/.local/`.
 
+## Deploy the demo and analysis on Vercel
+
+Import the repository as one Vercel project with the repository root as the Root Directory. The checked-in `vercel.json` uses the Other preset, installs both Node workspaces with `npm ci`, and serves the Vite build from `frontend/dist/app` at the domain root. The two files under `api/*/explain.ts` are the Vercel function entry points. They use the same app and validation as the local server.
+
+Set `GEMINI_API_KEY` as a sensitive variable for the environment being deployed. `GEMINI_MODEL` is optional. After deploying, open the demo on the deployed origin, run **Analyse this plan**, then save two cuts and run **Analyse comparison**. Both actions should show an AI recommendation.
+
 ## Verify the built fixture
 
 From `frontend/`, confirm the prepared release is in the repository's `public/cases/`, then run:

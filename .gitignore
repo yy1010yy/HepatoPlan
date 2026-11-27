@@ -1,5 +1,6 @@
 /.codex-notes/
 /.env
+/node_modules/
 /api/node_modules/
 /backend-design.md
 /backend-tasks.md
