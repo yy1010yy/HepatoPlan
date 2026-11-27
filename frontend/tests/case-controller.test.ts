@@ -11,7 +11,8 @@ import { PlanSession } from '../src/planning/plan-session.ts'
 import type { SavedPlan } from '../src/planning/plan-session.ts'
 import { createResectionScene } from '../src/planning/resection-viewer.ts'
 import { PreparedCase } from '../src/planning/volumetry.ts'
-import type { ComparePlans, EvaluateVolumetry, VolumetryJob, VolumetryWorkerResponse } from '../src/planning/volumetry-worker.ts'
+import type { ComparePlans, EvaluateVolumetry, VolumetryWorkerRequest, VolumetryWorkerResponse } from '../src/planning/volumetry-worker.ts'
+import type { OffsetSearchResult } from '../src/planning/volumetry.ts'
 import type { VolumetryResult } from '../src/planning/volumetry.ts'
 
 const catalog: LoadedCaseIndex = {
@@ -44,13 +45,13 @@ class FakeWorker {
   onerror: ((event: ErrorEvent) => void) | null = null
   onmessageerror: ((event: MessageEvent) => void) | null = null
   terminated = false
-  readonly dispatched: VolumetryJob[] = []
+  readonly dispatched: VolumetryWorkerRequest[] = []
 
   get jobs(): EvaluateVolumetry[] {
     return this.dispatched.filter(job => job.type === 'evaluate')
   }
 
-  postMessage(job: VolumetryJob) { this.dispatched.push(job) }
+  postMessage(job: VolumetryWorkerRequest) { this.dispatched.push(job) }
   terminate() { this.terminated = true }
   emit(data: VolumetryWorkerResponse) { this.onmessage?.(new MessageEvent('message', { data })) }
   crash() { this.onmessageerror?.(new MessageEvent('messageerror')) }
@@ -131,6 +132,96 @@ function comparisonReply(job: ComparePlans, volumes = difference): Extract<Volum
   const { selectionToken, comparisonRequestId, planAId, planBId } = job
   return { type: 'comparePlansResult', selectionToken, comparisonRequestId, planAId, planBId, result: volumes }
 }
+
+test('analysis shares the pending spatial scan with the overlay and ignores a superseded pair', async () => {
+  const { controller, ready, frame } = harness()
+  const worker = await ready()
+  frame()
+  publishResult(worker, worker.jobs[0])
+  const [a, b] = ['a', 'b'].map(id => saved(id))
+  const signal = new AbortController().signal
+  const analysis = controller.collectComparison([a, b], signal)
+  controller.selectComparison(a, b)
+  frame()
+  const first = lastComparison(worker)
+  controller.hideComparisonOverlay()
+  assert.equal(readyState(controller).comparison.status, 'loading')
+  worker.emit(comparisonReply(first))
+  assert.deepEqual(await analysis, difference)
+  assert.deepEqual(await controller.collectComparison([a, b], signal), difference)
+  assert.equal(worker.dispatched.filter(job => job.type === 'comparePlans').length, 1)
+
+  const reversed = controller.collectComparison([b, a], signal)
+  frame()
+  const stale = lastComparison(worker)
+  const active = controller.collectComparison([a, b], signal)
+  assert.equal(await reversed, undefined)
+  worker.emit(comparisonReply(stale))
+  frame()
+  const retry = lastComparison(worker)
+  assert.notEqual(retry.comparisonRequestId, first.comparisonRequestId)
+  worker.emit({ ...comparisonReply(retry), type: 'comparePlansError', message: 'Region scan failed' })
+  assert.equal(await active, undefined)
+  controller.retryComparison()
+  const retried = controller.collectComparison([a, b], signal)
+  frame()
+  worker.emit(comparisonReply(lastComparison(worker)))
+  assert.deepEqual(await retried, difference)
+})
+
+test('offset searches are revision-scoped and a tested cut saves without replacing the working cut', async () => {
+  const { controller, ready, frame } = harness()
+  let worker = await ready()
+  frame()
+  publishResult(worker, worker.jobs[0])
+  const session = new PlanSession(controller)
+  const candidate: OffsetSearchResult = {
+    minOffsetMm: -5, maxOffsetMm: 5, testedCount: 11, qualifyingCount: 2, outcome: 'improvement',
+    alternative: { offsetMm: 2, plane: { ...readyState(controller).plane, pointMm: [3, 7, 10] },
+      result: { ...result, tumourCentres: { removal: 1, retained: 0, onPlane: 0 } } },
+  }
+  assert(controller.startOffsetSearch())
+  const first = worker.dispatched.at(-1)!
+  assert(first.type === 'searchOffsets')
+  controller.setPlaneOffset(1)
+  assert.equal(worker.dispatched.at(-1)?.type, 'cancelSearch')
+  worker.emit({ ...first, type: 'searchResult', result: candidate })
+  assert.equal(readyState(controller).offsetSearch, undefined)
+  frame()
+  publishResult(worker, worker.jobs.at(-1)!)
+  assert(controller.startOffsetSearch())
+  const second = worker.dispatched.at(-1)!
+  assert(second.type === 'searchOffsets')
+  worker.emit({ ...second, type: 'searchError', message: 'Search failed' })
+  assert.deepEqual(readyState(controller).offsetSearch, { status: 'error', message: 'Search failed' })
+  assert(controller.startOffsetSearch())
+  const retry = worker.dispatched.at(-1)!
+  assert(retry.type === 'searchOffsets')
+  worker.emit({ ...second, type: 'searchError', message: 'Stale error' })
+  worker.emit({ ...retry, type: 'searchResult', result: candidate })
+  const working = readyState(controller)
+  assert.throws(() => session.saveAlternative({ name: ' ' }, candidate), /name/)
+  const snapshot = session.saveAlternative({ name: 'Alternative' }, candidate)
+  assert.deepEqual(snapshot.plane, candidate.alternative.plane)
+  assert.deepEqual(snapshot.result, candidate.alternative.result)
+  assert.equal(controller.state, working)
+  controller.setPlaneOffset(0)
+  assert.throws(() => session.saveAlternative({ name: 'Stale' }, candidate), /Search again/)
+  frame()
+  publishResult(worker, worker.jobs.at(-1)!)
+  assert.equal(session.open(snapshot.id), snapshot)
+  assert.deepEqual(readyState(controller).plane, snapshot.plane)
+  frame()
+  publishResult(worker, worker.jobs.at(-1)!)
+  assert(controller.startOffsetSearch())
+  const delayed = worker.onmessage!
+  const old = worker.dispatched.at(-1)!
+  assert(old.type === 'searchOffsets')
+  worker = await ready('b')
+  delayed(new MessageEvent('message', { data: { ...old, type: 'searchResult', result: candidate } }))
+  assert.equal(readyState(controller).offsetSearch, undefined)
+  assert.equal(session.list().length, 0)
+})
 
 test('late comparison success and error leave active comparison data and status intact', async () => {
   const { controller, ready, frame } = harness()

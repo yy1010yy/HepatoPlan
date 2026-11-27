@@ -1,6 +1,6 @@
-import type { CaseMetadata } from './case-contract.ts'
+import type { CaseMetadata, Vec3 } from './case-contract.ts'
 import type { ResectionPlane } from './plane.ts'
-import type { PlanDifferenceResult, VolumetryResult } from './volumetry.ts'
+import type { OffsetSearchResult, PlanDifferenceResult, VolumetryResult } from './volumetry.ts'
 
 export type InitialiseVolumetry = {
   type: 'initialise'
@@ -30,7 +30,12 @@ export type ComparePlans = ComparisonIdentity & {
 }
 
 export type VolumetryJob = EvaluateVolumetry | ComparePlans
-export type VolumetryWorkerRequest = InitialiseVolumetry | VolumetryJob
+export type SearchIdentity = { selectionToken: number; revision: number; searchRequestId: number }
+export type SearchOffsets = SearchIdentity & {
+  type: 'searchOffsets'; plane: ResectionPlane; centre: Vec3; limit: number; currentOffsetMm: number
+}
+export type CancelSearch = SearchIdentity & { type: 'cancelSearch' }
+export type VolumetryWorkerRequest = InitialiseVolumetry | VolumetryJob | SearchOffsets | CancelSearch
 
 export type VolumetryWorkerResponse =
   | { type: 'ready'; selectionToken: number }
@@ -39,6 +44,8 @@ export type VolumetryWorkerResponse =
   | { type: 'calculationError'; selectionToken: number; revision: number; message: string }
   | (ComparisonIdentity & { type: 'comparePlansResult'; result: PlanDifferenceResult })
   | (ComparisonIdentity & { type: 'comparePlansError'; message: string })
+  | (SearchIdentity & { type: 'searchResult'; result: OffsetSearchResult })
+  | (SearchIdentity & { type: 'searchError'; message: string })
 
 export function startVolumetryWorker(
   selectionToken: number, metadata: CaseMetadata, labels: ArrayBuffer,

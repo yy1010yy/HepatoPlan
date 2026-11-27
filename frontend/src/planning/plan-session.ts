@@ -2,7 +2,7 @@ import type { CaseController, CaseState } from './case-controller.ts'
 import { measurementRows } from './measurements-panel.ts'
 import type { ResectionPlane } from './plane.ts'
 import type { Vec3 } from './case-contract.ts'
-import type { VolumetryResult } from './volumetry.ts'
+import type { OffsetSearchResult, VolumetryResult } from './volumetry.ts'
 
 export type PlanDetails = {
   readonly name: string
@@ -40,6 +40,12 @@ function snapshotVector(vector: Vec3): Vec3 {
   return Object.freeze([vector[0], vector[1], vector[2]] as const)
 }
 
+function planName(details: PlanDetails): string {
+  const name = details.name.trim()
+  if (!name) throw new Error('Enter a plan name.')
+  return name
+}
+
 export class PlanSession {
   readonly #controller: Pick<CaseController, 'state' | 'restorePlane' | 'selectComparison'>
   readonly #plans = new Map<string, SavedPlan[]>()
@@ -50,27 +56,42 @@ export class PlanSession {
   }
 
   save(details: PlanDetails): SavedPlan {
-    const name = details.name.trim()
-    if (!name) throw new Error('Enter a plan name.')
+    const name = planName(details)
     const state = this.#controller.state
     if (state.status !== 'ready' || state.measurements.status !== 'ready') {
       throw new Error('Wait for measurements for the current case and plane before saving.')
     }
 
+    return this.#saveSnapshot({ ...details, name }, state, state.plane, state.measurements.result)
+  }
+
+  saveAlternative(details: PlanDetails, search: OffsetSearchResult): SavedPlan {
+    const state = this.#controller.state
+    if (state.status !== 'ready' || state.offsetSearch?.status !== 'ready'
+        || state.offsetSearch.result !== search || search.outcome !== 'improvement') {
+      throw new Error('Search again for an alternative to the current cut before saving.')
+    }
+    return this.#saveSnapshot({ ...details, name: planName(details) }, state, search.alternative.plane, search.alternative.result)
+  }
+
+  #saveSnapshot(details: PlanDetails, state: Extract<CaseState, { status: 'ready' }>,
+    plane: ResectionPlane, result: VolumetryResult): SavedPlan {
     const plan = Object.freeze({
       id: `plan-${++this.#nextId}`,
-      name,
+      name: details.name,
       procedureType: details.procedureType,
       reason: details.reason,
       notes: details.notes,
       releaseId: state.metadata.releaseId,
       caseId: state.caseId,
       plane: Object.freeze({
-        pointMm: snapshotVector(state.plane.pointMm),
-        unitNormal: snapshotVector(state.plane.unitNormal),
-        resectSide: state.plane.resectSide,
+        pointMm: snapshotVector(plane.pointMm),
+        unitNormal: snapshotVector(plane.unitNormal),
+        resectSide: plane.resectSide,
       }),
-      result: Object.freeze({ ...state.measurements.result }),
+      result: Object.freeze({ ...result, ...(result.tumourCentres && {
+        tumourCentres: Object.freeze({ ...result.tumourCentres }),
+      }) }),
     })
     const key = scope(state)
     const current = this.#plans.get(key)

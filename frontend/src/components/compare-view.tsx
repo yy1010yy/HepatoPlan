@@ -73,6 +73,7 @@ export function CompareView({ titleRef, plans, pair, onPair, state, controller, 
 
   function updatePair(next: ComparisonPair) {
     if (ready && showDifferences) controller?.selectComparison(...next)
+    else controller?.selectComparison()
     onPair(next)
   }
 
@@ -108,7 +109,7 @@ export function CompareView({ titleRef, plans, pair, onPair, state, controller, 
           <label className="show-plane">
             <input type="checkbox" checked={showDifferences} onChange={event => {
               if (event.currentTarget.checked) controller?.selectComparison(...pair)
-              else controller?.selectComparison()
+              else controller?.hideComparisonOverlay()
               setShowDifferences(event.currentTarget.checked)
             }} /> Show differences
           </label>
