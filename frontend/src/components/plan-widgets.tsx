@@ -4,7 +4,8 @@ import { Button, LabelledRange, MetricRow, Status } from './controls.tsx'
 import type { CaseController, CaseState } from '../planning/case-controller.ts'
 import { PLANE_PRESETS, planeReadouts, presetPlane } from '../planning/plane-controls.ts'
 import type { PlanePreset } from '../planning/plane-controls.ts'
-import { measurementLabels, measurementPanel } from '../planning/measurements-panel.ts'
+import { measurementLabels } from '../planning/measurements-panel.ts'
+import type { MeasurementPanel } from '../planning/measurements-panel.ts'
 
 type Editing = { state: CaseState; controller?: CaseController }
 
@@ -57,30 +58,39 @@ export function PlaneControls({ state, controller, planeVisible, liverOpacity, o
   )
 }
 
-export function Measurements({ state, onRetry, onSave, onCompare, savedName }: {
+export function PrimaryMeasurements({ panel }: { panel: MeasurementPanel }) {
+  const remaining = panel.status === 'ready' ? panel.rows.find(row => row.label === measurementLabels.remaining)?.value : undefined
+  const flr = panel.status === 'ready' ? panel.rows.find(row => row.label === measurementLabels.flr)?.value : undefined
+  return (
+    <section className="panel readings-primary" aria-labelledby="readings-title">
+      <h2 id="readings-title">Measurements</h2>
+      <dl className="metrics">
+        <MetricRow id="remaining" label={measurementLabels.remaining} value={remaining ?? '—'} />
+        <MetricRow id="flr" label={measurementLabels.flr} value={flr ?? '—'} />
+      </dl>
+      <div className="flr-track">
+        {panel.status === 'ready' && <meter id="flr-bar" aria-label={measurementLabels.flr}
+          min={0} max={100} value={panel.result.flrPercent} />}
+      </div>
+    </section>
+  )
+}
+
+export function MeasurementDetails({ state, panel: measurements, onRetry, onSave, onCompare, savedName }: {
   state: CaseState
+  panel: MeasurementPanel
   onRetry: () => void
   onSave: MouseEventHandler<HTMLButtonElement>
   onCompare?: () => void
   savedName?: string
 }) {
   const statusRef = useRef<HTMLParagraphElement>(null)
-  const measurements = measurementPanel(state)
   const rows = new Map(measurements.status === 'ready' ? measurements.rows.map(row => [row.label, row.value]) : [])
   const failed = state.status === 'ready' && measurements.status === 'unavailable'
   const updating = state.status === 'ready' && measurements.status === 'updating'
   const read = (label: string) => rows.get(label) ?? '—'
-  const flr = measurements.status === 'ready' ? measurements.result.flrPercent : undefined
   return (
-    <section className="panel readings" aria-labelledby="readings-title">
-      <h2 id="readings-title">Measurements</h2>
-      <dl className="metrics">
-        <MetricRow id="remaining" label={measurementLabels.remaining} value={read(measurementLabels.remaining)} />
-        <MetricRow id="flr" label={measurementLabels.flr} value={read(measurementLabels.flr)} />
-      </dl>
-      <div className="flr-track">
-        {flr !== undefined && <meter id="flr-bar" aria-label={measurementLabels.flr} min={0} max={100} value={flr} />}
-      </div>
+    <section className="panel readings" aria-label="Detailed measurements">
       <dl className="measurement-details">
         {(['total', 'removed', 'resected', 'intersection', 'distance'] as const).map(key => (
           <MetricRow key={key} id={`measure-${key}`} label={measurementLabels[key]} value={read(measurementLabels[key])} />

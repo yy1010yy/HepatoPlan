@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEventHandler, ReactNode, Ref } from 'react'
 import { Box3, Vector3 } from 'three'
 import { Button, Status } from './controls.tsx'
@@ -9,7 +9,8 @@ import type { DecodedMesh } from '../planning/binary-stl.ts'
 import { AnatomyViewer } from './anatomy-viewer.tsx'
 import type { ResectionViewerSource } from '../planning/resection-viewer.ts'
 import { LandingContent } from './landing-content.tsx'
-import { Measurements, PlaneControls, Presets } from './plan-widgets.tsx'
+import { MeasurementDetails, PlaneControls, Presets, PrimaryMeasurements } from './plan-widgets.tsx'
+import { measurementPanel } from '../planning/measurements-panel.ts'
 import { PlanDetailsList } from './plan-dialogs.tsx'
 import type { SavedPlan } from '../planning/plan-session.ts'
 
@@ -105,6 +106,19 @@ export function Workspace({ titleRef, state, controller, planCount, dirty, basel
 }) {
   const [planeVisible, setPlaneVisible] = useState(true)
   const [liverOpacity, setLiverOpacity] = useState(55)
+  const editing = useRef<HTMLDivElement>(null)
+  const preview = useRef<HTMLDivElement>(null)
+  const panel = measurementPanel(state)
+  useEffect(() => {
+    const editor = editing.current
+    const pinned = preview.current
+    if (!editor || !pinned) return
+    const observer = new ResizeObserver(() => {
+      editor.style.setProperty('--plan-preview-height', `${pinned.offsetHeight}px`)
+    })
+    observer.observe(pinned)
+    return () => observer.disconnect()
+  }, [])
   const dimensions = state.status === 'ready'
     ? meshBox(state.liver).union(meshBox(state.tumour)).getSize(new Vector3()) : undefined
   const extent = dimensions && `Mesh extent: ${dimensions.toArray().map(Math.round).join(' × ')} mm`
@@ -122,14 +136,29 @@ export function Workspace({ titleRef, state, controller, planCount, dirty, basel
         <Presets state={state} controller={controller} />
       </div>
       <div id="plan-view" className="workframe plan-layout">
-        <PlaneControls state={state} controller={controller} planeVisible={planeVisible} liverOpacity={liverOpacity}
-          onVisibility={setPlaneVisible} onOpacity={setLiverOpacity} />
-        <CaseViewport name="case" title="Case anatomy" caption={<span className="pill">RAS+ · mm</span>}
-          extent={extent} {...caseActions}>
-          {state.status === 'ready' && controller && <AnatomyViewer key={state.selectionToken} source={controller}
-            planeVisible={planeVisible} liverOpacity={liverOpacity / 100} />}
-        </CaseViewport>
-        <Measurements state={state} onRetry={onRetryMeasurement} onSave={onSave} onCompare={onCompare} savedName={savedName} />
+        <div className="plan-editing" ref={editing} onFocusCapture={event => {
+          const target = event.target
+          const pinned = preview.current
+          if (!pinned || !target.closest('.controls') || getComputedStyle(pinned).position !== 'sticky') return
+          requestAnimationFrame(() => {
+            if (!target.isConnected || document.activeElement !== target) return
+            const clearance = target.getBoundingClientRect().top - pinned.getBoundingClientRect().bottom - 8
+            if (clearance < 0) window.scrollBy(0, clearance)
+          })
+        }}>
+          <div className="plan-preview" ref={preview}>
+            <CaseViewport name="case" title="Case anatomy" caption={<span className="pill">RAS+ · mm</span>}
+              extent={extent} {...caseActions}>
+              {state.status === 'ready' && controller && <AnatomyViewer key={state.selectionToken} source={controller}
+                planeVisible={planeVisible} liverOpacity={liverOpacity / 100} />}
+            </CaseViewport>
+            <PrimaryMeasurements panel={panel} />
+          </div>
+          <PlaneControls state={state} controller={controller} planeVisible={planeVisible} liverOpacity={liverOpacity}
+            onVisibility={setPlaneVisible} onOpacity={setLiverOpacity} />
+        </div>
+        <MeasurementDetails state={state} panel={panel} onRetry={onRetryMeasurement} onSave={onSave}
+          onCompare={onCompare} savedName={savedName} />
       </div>
     </section>
   )

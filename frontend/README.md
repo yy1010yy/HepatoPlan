@@ -42,7 +42,7 @@ npm.cmd run build -- --base=/demo/
 npm.cmd run preview -- --base=/demo/
 ```
 
-Open the printed URL under `/demo/`. Plan uses a URL fragment, so the host can serve the emitted files with standard static routing. Only the root `public/` tree is copied into the application artifact. The prepared catalogue and versioned releases are served alongside the built JavaScript and worker. Apply the [release cache policy](../backend/README.md#publish-a-complete-case-release) on the deployment host.
+Open the printed URL under `/demo/`. Plan uses a URL fragment, so the host can serve the emitted files with standard static routing. Only the root `public/` tree is copied into the application artifact. Vite preview serves `cases/index.json` with `Cache-Control: no-cache` and each prepared versioned release file with `Cache-Control: public, max-age=31536000, immutable`. Apply the same [release cache policy](../backend/README.md#publish-a-complete-case-release) when configuring another static host.
 
 ## Verify the production entry
 
@@ -51,7 +51,17 @@ npm.cmd run typecheck
 npm.cmd test
 $env:PLAYWRIGHT_CHANNEL = 'chrome'
 npm.cmd run test:browser -- workflow.spec.ts
-npm.cmd run test:browser:app
+npm.cmd run test:browser:app -- --grep-invert input.timing --workers=2
 ```
 
-The app browser suite builds and serves the production entry at `/demo/`. It checks all three packaged cases, worker startup, the desktop grids, keyboard focus and case recovery. With Playwright-managed Chromium, install it with `npx.cmd playwright install chromium` and omit the Chrome channel setting. The [browser-engine fixture](../backend/README.md#run-the-synthetic-browser-checks) has a separate build and test command.
+The app browser suite builds and serves `dist/app/` at `/demo/`. It checks all three packaged cases, conditional catalogue revalidation, the release cache headers, both demo entry paths, and the complete save and compare flow. It also checks keyboard access and the pinned model and readings at portrait, tablet, desktop, and short landscape sizes. With Playwright-managed Chromium, install it with `npx.cmd playwright install chromium` and omit the Chrome channel setting. The [browser-engine fixture](../backend/README.md#run-the-synthetic-browser-checks) has a separate build and test command.
+
+Run the timing check separately to give the viewer a single browser worker. It measures 20 slider edits and 10 preset selections from input through the updated measurements and two animation frames.
+
+```powershell
+$env:HEPATOPLAN_APP_TIMING = '1'
+npx.cmd playwright test --config playwright.app.config.ts --grep production.demo.input.timing --workers=1
+Remove-Item Env:HEPATOPLAN_APP_TIMING
+```
+
+The report goes to `backend/.local/production-app-timing.json` and records the WebGL renderer and latency percentiles. Set `HEPATOPLAN_APP_DEFAULT_GL=1` when running the timing check with Chrome's default graphics settings. That profile writes `backend/.local/production-app-timing-default-gl.json`.

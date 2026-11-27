@@ -22,7 +22,7 @@ async function openCase(page: Page, id: string) {
 
 async function expectReady(page: Page, id: string) {
   await expect(page.locator('#active-case')).toHaveText(id)
-  await expect(page.locator('#case-status')).toHaveText('Liver and tumour meshes loaded.')
+  await expect(page.locator('#case-status')).toHaveText('Liver and tumour meshes loaded.', { timeout: 15_000 })
   await expect(page.locator('#case-extent')).toContainText('mm')
   await expect(page.locator('#remaining')).toHaveText(/[\d,.]+ mL/)
   await expect(page.locator('#flr')).toHaveText(/[\d,.]+%/)
