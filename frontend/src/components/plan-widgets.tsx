@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import type { MouseEventHandler } from 'react'
+import type { MouseEventHandler, ReactNode, Ref } from 'react'
 import { Button, LabelledRange, MetricRow, Status } from './controls.tsx'
 import type { CaseController, CaseState } from '../planning/case-controller.ts'
 import { PLANE_PRESETS, planeReadouts, presetPlane } from '../planning/plane-controls.ts'
@@ -11,7 +11,7 @@ import type { PlanContext } from '../plan-context.ts'
 
 type Editing = { state: CaseState; controller?: CaseController }
 
-export function Presets({ state, controller }: Editing) {
+export function Presets({ state, controller, locked }: Editing & { locked?: boolean }) {
   return (
     <div className="actions presets" role="group" aria-label="Plane presets">
       {(Object.keys(PLANE_PRESETS) as PlanePreset[]).map(key => {
@@ -21,7 +21,7 @@ export function Presets({ state, controller }: Editing) {
           pressed = preset.pointMm.every((value, i) => value === state.plane.pointMm[i])
             && preset.unitNormal.every((value, i) => Math.abs(value - state.plane.unitNormal[i]) < 1e-12)
         }
-        return <Button key={key} aria-pressed={pressed} disabled={state.status !== 'ready'}
+        return <Button key={key} aria-pressed={pressed} disabled={state.status !== 'ready' || locked}
           onClick={() => controller?.applyPlanePreset(key)}>{PLANE_PRESETS[key].label}</Button>
       })}
     </div>
@@ -29,9 +29,11 @@ export function Presets({ state, controller }: Editing) {
 }
 
 export function PlaneControls({ state, controller, planeVisible, liverOpacity, onVisibility, onOpacity,
-  context, onContextChange }: Editing & {
+  context, onContextChange, locked, analysisTrigger }: Editing & {
   planeVisible: boolean; liverOpacity: number; onVisibility: (value: boolean) => void; onOpacity: (value: number) => void
   context: PlanContext; onContextChange: (context: PlanContext) => void
+  locked?: boolean
+  analysisTrigger?: ReactNode
 }) {
   const ready = state.status === 'ready'
   const plane = ready ? planeReadouts(state.liver.bounds, state.plane) : undefined
@@ -41,14 +43,14 @@ export function PlaneControls({ state, controller, planeVisible, liverOpacity, o
       <h2 id="plane-title">Resection plane</h2>
       <LabelledRange id="plane-offset" label="Plane offset" min={-offsetLimit} max={offsetLimit} step={1}
         value={Math.round(plane?.offsetMm ?? 0)} readout={plane?.offsetText} aria-valuetext={plane?.offsetText}
-        disabled={!ready} onChange={event => controller?.setPlaneOffset(event.currentTarget.valueAsNumber)} />
+        disabled={!ready || locked} onChange={event => controller?.setPlaneOffset(event.currentTarget.valueAsNumber)} />
       <LabelledRange id="plane-angle" label="Plane angle" min={-45} max={45} step={1}
         value={Math.round(plane?.angleDeg ?? 0)} readout={plane?.angleText} aria-valuetext={plane?.angleText}
-        disabled={!ready} onChange={event => controller?.setPlaneAngle(event.currentTarget.valueAsNumber)} />
+        disabled={!ready || locked} onChange={event => controller?.setPlaneAngle(event.currentTarget.valueAsNumber)} />
       <p className="status removal-side">Removal side <strong>{ready ? state.plane.resectSide : '—'}</strong></p>
       <div className="actions">
-        <Button disabled={!ready} onClick={() => controller?.flipResectSide()}>Flip removal side</Button>
-        <Button disabled={!ready} onClick={() => controller?.resetPlane()}>Reset plane</Button>
+        <Button id="removal-side-control" disabled={!ready || locked} onClick={() => controller?.flipResectSide()}>Flip removal side</Button>
+        <Button disabled={!ready || locked} onClick={() => controller?.resetPlane()}>Reset plane</Button>
       </div>
       <fieldset className="display-controls" disabled={!ready}>
         <legend>Display</legend>
@@ -58,7 +60,7 @@ export function PlaneControls({ state, controller, planeVisible, liverOpacity, o
           value={liverOpacity} readout={`${liverOpacity}%`} aria-valuetext={`${liverOpacity}%`}
           onChange={event => onOpacity(event.currentTarget.valueAsNumber)} />
       </fieldset>
-      <fieldset className="display-controls plan-context" disabled={!ready}>
+      <fieldset className="display-controls plan-context" disabled={!ready || locked}>
         <legend>Plan context</legend>
         {(['procedureType', 'reason'] as const).map(key => {
           const { label, placeholder, groups } = planContextOptions[key]
@@ -87,6 +89,7 @@ export function PlaneControls({ state, controller, planeVisible, liverOpacity, o
           )
         })}
       </fieldset>
+      {analysisTrigger}
     </section>
   )
 }
@@ -116,13 +119,16 @@ export function PrimaryMeasurements({ panel }: { panel: MeasurementPanel }) {
   )
 }
 
-export function MeasurementDetails({ state, panel: measurements, onRetry, onSave, onCompare, savedName }: {
+export function MeasurementDetails({ state, panel: measurements, onRetry, onSave, onCompare, savedName, saveRef, alternative, analysisResult }: {
   state: CaseState
   panel: MeasurementPanel
   onRetry: () => void
   onSave: MouseEventHandler<HTMLButtonElement>
   onCompare?: () => void
   savedName?: string
+  saveRef?: Ref<HTMLButtonElement>
+  alternative?: boolean
+  analysisResult?: ReactNode
 }) {
   const statusRef = useRef<HTMLParagraphElement>(null)
   const rows = new Map(measurements.status === 'ready' ? measurements.rows.map(row => [row.label, row.value]) : [])
@@ -142,9 +148,10 @@ export function MeasurementDetails({ state, panel: measurements, onRetry, onSave
       <Button id="measurement-retry" hidden={!failed} onClick={() => { statusRef.current?.focus(); onRetry() }}>
         Retry measurements
       </Button>
-      <Button className="button-primary" id="save-plan" disabled={!measurements.canSave}
+      {analysisResult}
+      <Button className="button-primary" id="save-plan" ref={saveRef} disabled={!measurements.canSave}
         aria-haspopup="dialog" onClick={onSave}>
-        Save plan
+        {alternative ? 'Save alternative' : 'Save plan'}
       </Button>
       {savedName && <Status id="save-status">Saved {savedName}.</Status>}
       {onCompare && <Button onClick={onCompare}>Compare these plans</Button>}

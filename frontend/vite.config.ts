@@ -4,10 +4,13 @@ import { resolve } from 'node:path'
 import { defineConfig } from 'vite'
 
 const preparedAsset = /^cases\/releases\/[a-z0-9-]+\/(?:ATTRIBUTION\.txt|[a-z0-9-]+\/(?:metadata\.json|labels\.bin|liver\.stl|tumour\.stl))$/
+const analysisProxy = { '^/api(?:/|$)': `http://127.0.0.1:${process.env.HEPATOPLAN_API_PORT ?? '4191'}` }
 
 export default defineConfig({
   publicDir: fileURLToPath(new URL('../public/', import.meta.url)),
   build: { outDir: 'dist/app' },
+  server: { proxy: analysisProxy },
+  preview: { proxy: analysisProxy },
   plugins: [{
     name: 'hepatoplan-case-cache',
     configurePreviewServer(server) {

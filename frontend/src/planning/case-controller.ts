@@ -5,8 +5,8 @@ import type { ResectionPlane } from './plane.ts'
 import { defaultPlane, normalAtAngle, planeGeometry, pointAtOffset, presetPlane } from './plane-controls.ts'
 import type { PlanePreset } from './plane-controls.ts'
 import { startVolumetryWorker } from './volumetry-worker.ts'
-import type { ComparePlans, ComparisonIdentity, EvaluateVolumetry, VolumetryJob, VolumetryWorkerResponse } from './volumetry-worker.ts'
-import type { PlanDifferenceResult, VolumetryResult } from './volumetry.ts'
+import type { CancelSearch, ComparePlans, ComparisonIdentity, EvaluateVolumetry, SearchOffsets, VolumetryJob, VolumetryWorkerResponse } from './volumetry-worker.ts'
+import type { OffsetSearchResult, PlanDifferenceResult, VolumetryResult } from './volumetry.ts'
 import type { SavedPlan } from './plan-session.ts'
 
 export type CaseMeshes = Pick<CaseBundle, 'liver' | 'tumour'>
@@ -26,12 +26,18 @@ export type ComparisonState =
   | { readonly status: 'ready'; readonly pair: ComparisonPair; readonly result: PlanDifferenceResult }
   | { readonly status: 'error'; readonly pair: ComparisonPair; readonly message: string }
 
+export type OffsetSearchState =
+  | { readonly status: 'loading' }
+  | { readonly status: 'ready'; readonly result: OffsetSearchResult }
+  | { readonly status: 'error'; readonly message: string }
+
 type ReadyCase = Selection & CaseAssets & {
   readonly status: 'ready'
   readonly plane: ResectionPlane
   readonly revision: number
   readonly measurements: Measurements
   readonly comparison: ComparisonState
+  readonly offsetSearch?: OffsetSearchState
 }
 
 export type CaseState =
@@ -44,7 +50,7 @@ type WorkerPort = {
   onmessage: ((event: MessageEvent<VolumetryWorkerResponse>) => void) | null
   onerror: ((event: ErrorEvent) => void) | null
   onmessageerror: ((event: MessageEvent) => void) | null
-  postMessage(message: VolumetryJob): void
+  postMessage(message: VolumetryJob | SearchOffsets | CancelSearch): void
   terminate(): void
 }
 
@@ -65,6 +71,10 @@ function matchesComparison(a: ComparisonIdentity, b: ComparisonIdentity): boolea
     && a.planAId === b.planAId && a.planBId === b.planBId
 }
 
+function samePair(pair: ComparisonPair | undefined, a: SavedPlan, b: SavedPlan): boolean {
+  return pair?.[0] === a && pair[1] === b
+}
+
 export class CaseController {
   readonly #catalog: LoadedCaseIndex
   readonly #dependencies: ControllerDependencies
@@ -83,6 +93,9 @@ export class CaseController {
   #desiredPlane?: ResectionPlane
   #desiredPair?: ComparisonPair
   #currentComparison?: ComparePlans
+  #comparisonReaders = new Set<ComparisonPair>()
+  #searchRequestId = 0
+  #search?: SearchOffsets
   #mayRecover = true
 
   constructor(catalog: LoadedCaseIndex, dependencies: Partial<ControllerDependencies> = {}) {
@@ -129,6 +142,84 @@ export class CaseController {
     const comparison = this.#queueComparison(state, [planA, planB])
     this.#publish({ ...state, comparison })
     this.#scheduleFrame()
+  }
+
+  hideComparisonOverlay(): void {
+    for (const pair of this.#comparisonReaders) {
+      if (samePair(this.#desiredPair, ...pair)) return
+    }
+    this.selectComparison()
+  }
+
+  async collectComparison(pair: ComparisonPair, signal: AbortSignal): Promise<PlanDifferenceResult | undefined> {
+    const state = this.#state
+    if (signal.aborted || state.status !== 'ready' || pair[0].id === pair[1].id
+        || pair.some(plan => plan.caseId !== state.caseId || plan.releaseId !== state.metadata.releaseId)) return
+    const reader: ComparisonPair = [pair[0], pair[1]]
+    this.#comparisonReaders.add(reader)
+    try {
+      this.selectComparison(...pair)
+      return await new Promise(resolve => {
+        let unsubscribe: (() => void) | undefined
+        let settled = false
+        const finish = (result?: PlanDifferenceResult) => {
+          signal.removeEventListener('abort', abort)
+          unsubscribe?.()
+          settled = true
+          resolve(result)
+        }
+        const abort = () => finish()
+        signal.addEventListener('abort', abort, { once: true })
+        unsubscribe = this.subscribe(next => {
+          if (signal.aborted || next.status !== 'ready' || next.selectionToken !== state.selectionToken
+              || next.comparison.status === 'idle' || !samePair(next.comparison.pair, ...pair)) return finish()
+          if (next.comparison.status === 'ready') finish(next.comparison.result)
+          if (next.comparison.status === 'error') finish()
+        })
+        if (settled) unsubscribe()
+      })
+    } finally {
+      this.#comparisonReaders.delete(reader)
+    }
+  }
+
+  startOffsetSearch(): boolean {
+    const state = this.#state
+    const worker = this.#worker
+    if (!worker || state.status !== 'ready' || state.measurements.status !== 'ready') return false
+    const { centre, offsetLimitMm } = planeGeometry(state.liver.bounds)
+    const currentOffsetMm = Math.round(state.plane.pointMm[0] - centre[0])
+    this.#cancelSearch()
+    const job: SearchOffsets = {
+      type: 'searchOffsets', selectionToken: state.selectionToken, revision: state.revision,
+      searchRequestId: ++this.#searchRequestId, plane: state.plane, centre, limit: offsetLimitMm, currentOffsetMm,
+    }
+    this.#search = job
+    try {
+      const expected = pointAtOffset({ centre, offsetLimitMm }, currentOffsetMm)
+      if (expected.some((value, axis) => value !== state.plane.pointMm[axis])) {
+        throw new Error('Set the working cut to a valid slider offset before searching.')
+      }
+      worker.postMessage(job)
+      this.#publish({ ...state, offsetSearch: { status: 'loading' } })
+    } catch (error) {
+      this.#search = undefined
+      this.#publish({ ...state, offsetSearch: { status: 'error', message: describe(error) } })
+    }
+    return true
+  }
+
+  #cancelSearch(): void {
+    const job = this.#search
+    this.#search = undefined
+    if (job) {
+      const { selectionToken, revision, searchRequestId } = job
+      try {
+        this.#worker?.postMessage({ type: 'cancelSearch', selectionToken, revision, searchRequestId })
+      } catch {
+        // The invalidated job cannot publish, even when cancellation cannot reach the worker.
+      }
+    }
   }
 
   retryComparison(): void {
@@ -262,6 +353,16 @@ export class CaseController {
       this.#queueMeasurement({ status: 'ready', ...selection, ...this.#assets, comparison }, plane)
       return
     }
+    if (message.type === 'searchResult' || message.type === 'searchError') {
+      const state = this.#state
+      if (state.status !== 'ready' || message.revision !== state.revision
+          || message.searchRequestId !== this.#search?.searchRequestId) return
+      this.#search = undefined
+      if (message.type === 'searchResult') this.#mayRecover = true
+      this.#publish({ ...state, offsetSearch: message.type === 'searchResult'
+        ? { status: 'ready', result: message.result } : { status: 'error', message: message.message } })
+      return
+    }
     const job = this.#inFlight
     if (message.type === 'comparePlansResult' || message.type === 'comparePlansError') {
       if (job?.type !== 'comparePlans' || !matchesComparison(job, message)) return
@@ -287,9 +388,10 @@ export class CaseController {
   #queueMeasurement(state: Omit<ReadyCase, 'plane' | 'revision' | 'measurements'>,
     plane: ResectionPlane): void {
     const revision = ++this.#revision
+    this.#cancelSearch()
     this.#desiredPlane = plane
     this.#pendingEvaluation = { type: 'evaluate', selectionToken: state.selectionToken, revision, plane }
-    this.#publish({ ...state, plane, revision, measurements: { status: 'updating' } })
+    this.#publish({ ...state, plane, revision, offsetSearch: undefined, measurements: { status: 'updating' } })
     this.#scheduleFrame()
   }
 
@@ -355,6 +457,7 @@ export class CaseController {
   }
 
   #clearActive(): void {
+    this.#search = undefined
     this.#abort?.abort()
     this.#abort = undefined
     if (this.#frame !== undefined) this.#dependencies.cancelFrame(this.#frame)

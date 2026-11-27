@@ -1,5 +1,5 @@
 import { comparePlans, PreparedCase } from './volumetry.ts'
-import type { VolumetryWorkerRequest, VolumetryWorkerResponse } from './volumetry-worker.ts'
+import type { SearchIdentity, SearchOffsets, VolumetryWorkerRequest, VolumetryWorkerResponse } from './volumetry-worker.ts'
 
 const port = globalThis as unknown as {
   onmessage: ((event: MessageEvent<VolumetryWorkerRequest>) => void) | null
@@ -7,9 +7,34 @@ const port = globalThis as unknown as {
 }
 
 let active: { selectionToken: number; preparedCase: PreparedCase } | undefined
+let search: SearchIdentity | undefined
 
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+async function runSearch({ selectionToken, revision, searchRequestId, plane, centre, limit, currentOffsetMm }: SearchOffsets) {
+  const identity = { selectionToken, revision, searchRequestId }
+  search = identity
+  try {
+    if (!active || active.selectionToken !== selectionToken) throw new Error('Worker is not ready for this selection.')
+    const steps = active.preparedCase.searchOffsets(plane, centre, limit, currentOffsetMm)
+    while (search === identity) {
+      const deadline = performance.now() + 8
+      do {
+        const step = steps.next()
+        if (step.done) {
+          port.postMessage({ type: 'searchResult', ...identity, result: step.value })
+          return
+        }
+      } while (performance.now() < deadline)
+      await new Promise<void>(resolve => setTimeout(resolve, 0))
+    }
+  } catch (error) {
+    if (search === identity) port.postMessage({ type: 'searchError', ...identity, message: describe(error) })
+  } finally {
+    if (search === identity) search = undefined
+  }
 }
 
 port.onmessage = ({ data }) => {
@@ -23,6 +48,11 @@ port.onmessage = ({ data }) => {
     } catch (error) {
       port.postMessage({ type: 'initialisationError', selectionToken, message: describe(error) })
     }
+  } else if (data.type === 'searchOffsets') {
+    void runSearch(data)
+  } else if (data.type === 'cancelSearch') {
+    if (search?.selectionToken === data.selectionToken && search.revision === data.revision
+        && search.searchRequestId === data.searchRequestId) search = undefined
   } else if (data.type === 'evaluate') {
     const { selectionToken, revision, plane } = data
     try {

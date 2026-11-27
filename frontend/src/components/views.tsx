@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEventHandler, ReactNode, Ref } from 'react'
 import { Box3, Vector3 } from 'three'
 import { Button, Status } from './controls.tsx'
@@ -11,8 +11,10 @@ import type { ResectionViewerSource } from '../planning/resection-viewer.ts'
 import { LandingContent } from './landing-content.tsx'
 import { MeasurementDetails, PlaneControls, Presets, PrimaryMeasurements } from './plan-widgets.tsx'
 import { measurementPanel } from '../planning/measurements-panel.ts'
-import { PlanDetailsList } from './plan-dialogs.tsx'
-import type { SavedPlan } from '../planning/plan-session.ts'
+import { PlanDetailsList, SavePlanDialog } from './plan-dialogs.tsx'
+import { planAnalysisScope, usePlanAnalysis } from './plan-analysis.tsx'
+import type { PlanDetails, SavedPlan } from '../planning/plan-session.ts'
+import type { OffsetSearchResult } from '../planning/volumetry.ts'
 import type { PlanContext } from '../plan-context.ts'
 
 type CaseActions = {
@@ -92,8 +94,10 @@ function meshBox({ bounds }: DecodedMesh) {
   return new Box3(new Vector3(...bounds.min), new Vector3(...bounds.max))
 }
 
+const desktopPlan = '(min-width: 1024px)'
+
 export function Workspace({ titleRef, state, controller, planCount, dirty, baseline, savedName,
-  context, onContextChange, onSave, onCompare, onRetryMeasurement, ...caseActions }: CaseActions & {
+  context, onContextChange, onSave, onCompare, onRetryMeasurement, onSaveAlternative, alternativeSavedName, ...caseActions }: CaseActions & {
   titleRef: Ref<HTMLHeadingElement>
   state: CaseState
   controller?: CaseController
@@ -104,14 +108,46 @@ export function Workspace({ titleRef, state, controller, planCount, dirty, basel
   onContextChange: (context: PlanContext) => void
   savedName?: string
   onSave: MouseEventHandler<HTMLButtonElement>
+  onSaveAlternative: (details: Pick<PlanDetails, 'name' | 'notes'>, search: OffsetSearchResult) => void
+  alternativeSavedName?: string
   onCompare?: () => void
   onRetryMeasurement: () => void
 }) {
   const [planeVisible, setPlaneVisible] = useState(true)
+  const [desktop, setDesktop] = useState(() => window.matchMedia(desktopPlan).matches)
   const [liverOpacity, setLiverOpacity] = useState(55)
+  const [previewCut, setPreviewCut] = useState<{ search: OffsetSearchResult; scope: string; show: boolean }>()
+  const [alternativeOpener, setAlternativeOpener] = useState<HTMLButtonElement | null>(null)
   const editing = useRef<HTMLDivElement>(null)
   const preview = useRef<HTMLDivElement>(null)
-  const panel = measurementPanel(state)
+  const toggle = useRef<HTMLButtonElement>(null)
+  const saveButton = useRef<HTMLButtonElement>(null)
+  const { scope } = planAnalysisScope(state, context)
+  const completedSearch = state.status === 'ready' && state.offsetSearch?.status === 'ready'
+    ? state.offsetSearch.result : undefined
+  const activePreview = previewCut?.search === completedSearch && previewCut?.scope === scope ? previewCut : undefined
+  const alternative = activePreview?.show && activePreview.search.outcome === 'improvement' ? activePreview.search.alternative : undefined
+  const displayed: CaseState = state.status === 'ready' && alternative ? {
+    ...state, plane: alternative.plane, measurements: { status: 'ready', result: alternative.result },
+  } : state
+  const panel = measurementPanel(displayed)
+  useLayoutEffect(() => {
+    if (previewCut && !activePreview) setPreviewCut(undefined)
+    if (alternativeOpener && !alternative) setAlternativeOpener(null)
+  }, [previewCut, activePreview, alternativeOpener, alternative])
+  function startPreview(search: OffsetSearchResult) {
+    setPreviewCut({ search, scope, show: true })
+    requestAnimationFrame(() => toggle.current?.focus())
+  }
+  const analysis = usePlanAnalysis({
+    state, controller, context, locked: !!alternative, showPlane: () => setPlaneVisible(true), onPreview: startPreview,
+  })
+  useEffect(() => {
+    const media = window.matchMedia(desktopPlan)
+    function updateLayout() { setDesktop(media.matches) }
+    media.addEventListener('change', updateLayout)
+    return () => media.removeEventListener('change', updateLayout)
+  }, [])
   useEffect(() => {
     const editor = editing.current
     const pinned = preview.current
@@ -136,8 +172,20 @@ export function Workspace({ titleRef, state, controller, planCount, dirty, basel
             <Status id="compare-status">{planCount === 1 ? 'Save one more plan to compare.' : 'Save two plans to compare.'}</Status>
           )}
         </div>
-        <Presets state={state} controller={controller} />
+        <Presets state={displayed} controller={controller} locked={!!alternative} />
       </div>
+      {activePreview && <div className="panel cut-preview-bar">
+        <div className="actions" role="group" aria-label="Cut in the viewer">
+          <Button aria-pressed={!alternative} onClick={() => setPreviewCut({ ...activePreview, show: false })}>Current cut</Button>
+          <Button ref={toggle} aria-pressed={!!alternative}
+            onClick={() => setPreviewCut({ ...activePreview, show: true })}>Tested alternative</Button>
+        </div>
+        <Button onClick={() => {
+          setPreviewCut(undefined)
+          requestAnimationFrame(() => saveButton.current?.focus())
+        }}>Keep current cut</Button>
+      </div>}
+      {alternativeSavedName && <Status id="alternative-saved-status">Saved alternative {alternativeSavedName}.</Status>}
       <div id="plan-view" className="workframe plan-layout">
         <div className="plan-editing" ref={editing} onFocusCapture={event => {
           const target = event.target
@@ -153,16 +201,27 @@ export function Workspace({ titleRef, state, controller, planCount, dirty, basel
             <CaseViewport name="case" title="Case anatomy" caption={<span className="pill">RAS+ · mm</span>}
               extent={extent} {...caseActions}>
               {state.status === 'ready' && controller && <AnatomyViewer key={state.selectionToken} source={controller}
-                planeVisible={planeVisible} liverOpacity={liverOpacity / 100} />}
+                planeVisible={planeVisible} liverOpacity={liverOpacity / 100} previewPlane={alternative?.plane} />}
             </CaseViewport>
-            <PrimaryMeasurements panel={panel} />
+            {!desktop && <PrimaryMeasurements panel={panel} />}
           </div>
-          <PlaneControls state={state} controller={controller} planeVisible={planeVisible} liverOpacity={liverOpacity}
-            onVisibility={setPlaneVisible} onOpacity={setLiverOpacity} context={context} onContextChange={onContextChange} />
+          <PlaneControls state={displayed} controller={controller} locked={!!alternative} planeVisible={planeVisible} liverOpacity={liverOpacity}
+            onVisibility={setPlaneVisible} onOpacity={setLiverOpacity} context={context} onContextChange={onContextChange}
+            analysisTrigger={analysis.trigger} />
         </div>
-        <MeasurementDetails state={state} panel={panel} onRetry={onRetryMeasurement} onSave={onSave}
-          onCompare={onCompare} savedName={savedName} />
+        <div className="plan-readings">
+          {desktop && <PrimaryMeasurements panel={panel} />}
+          <MeasurementDetails state={displayed} panel={panel} onRetry={onRetryMeasurement} saveRef={saveButton}
+            alternative={!!alternative} onSave={alternative ? event => setAlternativeOpener(event.currentTarget) : onSave}
+            onCompare={onCompare} savedName={alternative ? undefined : savedName} analysisResult={analysis.result} />
+        </div>
       </div>
+      {alternative && activePreview && alternativeOpener && <SavePlanDialog alternative opener={alternativeOpener}
+        fallback={saveButton} canSave onCancel={() => setAlternativeOpener(null)} onSave={details => {
+          onSaveAlternative(details, activePreview.search)
+          setAlternativeOpener(null)
+          setPreviewCut(undefined)
+        }} />}
     </section>
   )
 }

@@ -32,19 +32,21 @@ export function PlanDetailsList({ details }: { details: PlanDetails }) {
   )
 }
 
-export function SavePlanDialog({ opener, fallback, onCancel, onSave, canSave, previous, continuation }: DialogProps & {
+export function SavePlanDialog({ opener, fallback, onCancel, onSave, canSave, previous, continuation, alternative = false }: DialogProps & {
   onSave: (details: Pick<PlanDetails, 'name' | 'notes'>) => void
   canSave: boolean
   previous?: SavedPlan
   continuation?: string
+  alternative?: boolean
 }) {
   const initialFocus = useRef<HTMLInputElement>(null)
   const cancel = useRef<HTMLButtonElement>(null)
   const [error, setError] = useState('')
+  const title = alternative ? 'Save alternative' : 'Save plan'
   return (
     <Dialog id="save-dialog" titleId="save-title" opener={opener} initialFocus={initialFocus} cancel={cancel}
       fallback={fallback} onCancel={onCancel}>
-      <h2 id="save-title">Save plan</h2>
+      <h2 id="save-title">{title}</h2>
       <p className="status">{sessionNotice}</p>
       <form className="save-form" onSubmit={event => {
         event.preventDefault()
@@ -62,7 +64,7 @@ export function SavePlanDialog({ opener, fallback, onCancel, onSave, canSave, pr
         <div className="actions dialog-actions">
           <Button ref={cancel} onClick={onCancel}>Cancel</Button>
           <Button className="button-primary" type="submit" disabled={!canSave}>
-            {continuation ? `Save and ${continuation}` : 'Save plan'}
+            {continuation ? `Save and ${continuation}` : title}
           </Button>
         </div>
       </form>

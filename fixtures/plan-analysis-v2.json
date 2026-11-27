@@ -1,0 +1,186 @@
+{
+  "single": {
+    "request": {
+      "version": 2,
+      "requestId": "req-14",
+      "caseId": "case-002",
+      "releaseId": "demo-1",
+      "revision": 7,
+      "current": {
+        "caseId": "case-002",
+        "releaseId": "demo-1",
+        "offsetMm": 6,
+        "angleDeg": 0,
+        "resectSide": "positive",
+        "measurements": {
+          "totalParenchymaMl": 1200,
+          "remainingMl": 720,
+          "resectedMl": 480,
+          "flrPercent": 60,
+          "resectedPercent": 40,
+          "tumourIntersectsPlane": false,
+          "tumourPlaneDistanceMm": 6,
+          "tumourCentres": {
+            "removal": 100,
+            "retained": 0,
+            "onPlane": 0
+          }
+        }
+      },
+      "search": {
+        "minOffsetMm": -15,
+        "maxOffsetMm": 15,
+        "testedCount": 31,
+        "qualifyingCount": 27,
+        "outcome": "improvement",
+        "alternative": {
+          "caseId": "case-002",
+          "releaseId": "demo-1",
+          "offsetMm": 9,
+          "angleDeg": 0,
+          "resectSide": "positive",
+          "measurements": {
+            "totalParenchymaMl": 1200,
+            "remainingMl": 744,
+            "resectedMl": 456,
+            "flrPercent": 62,
+            "resectedPercent": 38,
+            "tumourIntersectsPlane": false,
+            "tumourPlaneDistanceMm": 3,
+            "tumourCentres": {
+              "removal": 100,
+              "retained": 0,
+              "onPlane": 0
+            }
+          }
+        }
+      }
+    },
+    "response": {
+      "version": 2,
+      "mode": "single",
+      "requestId": "req-14",
+      "caseId": "case-002",
+      "releaseId": "demo-1",
+      "revision": 7,
+      "finding": {
+        "text": "Moving the offset from +6 mm to +9 mm retained 24 mL more parenchyma.",
+        "evidence": [
+          "current.offsetMm",
+          "search.alternative.offsetMm",
+          "current.measurements.remainingMl",
+          "search.alternative.measurements.remainingMl"
+        ]
+      },
+      "observations": [
+        {
+          "text": "The estimated gap narrowed from 6 mm to 3 mm.",
+          "evidence": [
+            "current.measurements.tumourPlaneDistanceMm",
+            "search.alternative.measurements.tumourPlaneDistanceMm"
+          ]
+        }
+      ],
+      "limitations": [
+        "geometric_gap_only"
+      ],
+      "recommendation": {
+        "action": "preview_alternative",
+        "rationale": "Inspect the smaller gap at +9 mm. The tested plane is separate and all segmented tumour centres are on its removal side.",
+        "evidence": [
+          "search.alternative.offsetMm",
+          "search.alternative.measurements.tumourPlaneDistanceMm",
+          "search.alternative.measurements.tumourIntersectsPlane",
+          "search.alternative.measurements.tumourCentres"
+        ]
+      }
+    }
+  },
+  "comparison": {
+    "request": {
+      "version": 2,
+      "requestId": "req-15",
+      "releaseId": "demo-1",
+      "caseId": "case-002",
+      "planAId": "plan-1",
+      "planBId": "plan-2",
+      "differenceVolumes": {
+        "removedOnlyByAMl": 20,
+        "removedOnlyByBMl": 10,
+        "removedByBothMl": 20,
+        "retainedByBothMl": 50
+      },
+      "planA": {
+        "caseId": "case-002",
+        "releaseId": "demo-1",
+        "offsetMm": 4,
+        "angleDeg": 0,
+        "resectSide": "positive",
+        "measurements": {
+          "totalParenchymaMl": 100,
+          "resectedMl": 40,
+          "remainingMl": 60,
+          "flrPercent": 60,
+          "resectedPercent": 40,
+          "tumourIntersectsPlane": false,
+          "tumourPlaneDistanceMm": 4.25
+        }
+      },
+      "planB": {
+        "caseId": "case-002",
+        "releaseId": "demo-1",
+        "offsetMm": 10,
+        "angleDeg": 4,
+        "resectSide": "positive",
+        "measurements": {
+          "totalParenchymaMl": 100,
+          "resectedMl": 30,
+          "remainingMl": 70,
+          "flrPercent": 70,
+          "resectedPercent": 30,
+          "tumourIntersectsPlane": true,
+          "tumourPlaneDistanceMm": 0
+        }
+      },
+      "spatialStatus": "ready"
+    },
+    "response": {
+      "version": 2,
+      "mode": "comparison",
+      "requestId": "req-15",
+      "caseId": "case-002",
+      "releaseId": "demo-1",
+      "planAId": "plan-1",
+      "planBId": "plan-2",
+      "finding": {
+        "text": "B retains 10 mL more parenchyma, and its plane touches or crosses the segmented tumour.",
+        "evidence": [
+          "planA.measurements.remainingMl",
+          "planB.measurements.remainingMl",
+          "planB.measurements.tumourIntersectsPlane"
+        ]
+      },
+      "observations": [
+        {
+          "text": "A alone removes 20 mL and B alone removes 10 mL. Those regions account for the net gain.",
+          "evidence": [
+            "differenceVolumes.removedOnlyByAMl",
+            "differenceVolumes.removedOnlyByBMl"
+          ]
+        }
+      ],
+      "limitations": [
+        "tumour_side_unmeasured"
+      ],
+      "recommendation": {
+        "action": "open_plan_b",
+        "rationale": "Inspect B’s contact in the viewer. A’s plane is separate with an estimated gap of 4.25 mm.",
+        "evidence": [
+          "planB.measurements.tumourIntersectsPlane",
+          "planA.measurements.tumourIntersectsPlane",
+          "planA.measurements.tumourPlaneDistanceMm"
+        ]
+      }
+    }
+  }
+}

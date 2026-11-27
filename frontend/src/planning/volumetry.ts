@@ -10,7 +10,22 @@ export type VolumetryResult = {
   readonly resectedPercent: number
   readonly tumourIntersectsPlane: boolean
   readonly tumourPlaneDistanceMm: number
+  readonly tumourCentres?: TumourCentres
 }
+
+export type TumourCentres = Readonly<{ removal: number; retained: number; onPlane: number }>
+export type MeasuredVolumetry = VolumetryResult & { readonly tumourCentres: TumourCentres }
+export type OffsetSearchResult = Readonly<{
+  minOffsetMm: number
+  maxOffsetMm: number
+  testedCount: number
+  qualifyingCount: number
+}> & (
+  | { readonly outcome: 'improvement'; readonly alternative: Readonly<{
+    offsetMm: number; plane: ResectionPlane; result: MeasuredVolumetry
+  }> }
+  | { readonly outcome: 'current_best' | 'no_gain' | 'none_qualify' }
+)
 
 export type PlanDifferenceResult = {
   readonly removedOnlyByAMl: number
@@ -118,11 +133,14 @@ export class PreparedCase {
     return { offset, stepI, stepJ, stepK, halfWidth, sideSign: resectSide === 'positive' ? 1 : -1 }
   }
 
-  evaluate(planeInput: ResectionPlane): VolumetryResult {
+  evaluate(planeInput: ResectionPlane): MeasuredVolumetry {
     const { offset, stepI, stepJ, stepK, halfWidth, sideSign } = this.#projectPlane(planeInput)
     const [nx, ny, nz] = this.#dimensions
     let resected = 0
     let closestTumourCentreMm = Infinity
+    let removal = 0
+    let retained = 0
+    let onPlane = 0
     let index = 0
     for (let i = 0; i < nx; i++) {
       const sliceOffset = offset + stepI * i
@@ -136,6 +154,10 @@ export class PreparedCase {
             if (sideSign * distance > 0) resected++
           } else {
             closestTumourCentreMm = Math.min(closestTumourCentreMm, Math.abs(distance))
+            const signedDistance = sideSign * distance
+            if (signedDistance > 0) removal++
+            else if (signedDistance < 0) retained++
+            else onPlane++
           }
         }
       }
@@ -152,6 +174,91 @@ export class PreparedCase {
       resectedPercent: resected / parenchyma * 100,
       tumourIntersectsPlane: closestTumourCentreMm <= halfWidth,
       tumourPlaneDistanceMm: Math.max(0, closestTumourCentreMm - halfWidth),
+      tumourCentres: { removal, retained, onPlane },
+    }
+  }
+
+  *searchOffsets(
+    plane: ResectionPlane, centre: Vec3, limit: number, currentOffsetMm: number,
+  ): Generator<void, OffsetSearchResult> {
+    if (!Number.isSafeInteger(limit) || limit < 0 || !Number.isInteger(currentOffsetMm)
+        || Math.abs(currentOffsetMm) > limit || !isFiniteVec3(centre)) {
+      throw new RangeError('Search requires the current slider offset and case bounds.')
+    }
+    const minOffsetMm = -limit
+    const maxOffsetMm = limit
+    const testedCount = 2 * limit + 1
+    const planeAt = (index: number): ResectionPlane => ({
+      ...plane, pointMm: [centre[0] + (minOffsetMm + index), centre[1], centre[2]],
+    })
+    const projections = Array.from({ length: testedCount }, (_, index) => this.#projectPlane(planeAt(index)))
+    const { stepI, stepJ, stepK, halfWidth, sideSign } = projections[0]
+    // Traverse the slider in the direction of increasing signed distance.
+    const backwards = projections.at(-1)!.offset * sideSign < projections[0].offset * sideSign
+    if (backwards) projections.reverse()
+    const removed = new Float64Array(testedCount)
+    const qualifyingTumour = new Float64Array(testedCount)
+    const [nx, ny, nz] = this.#dimensions
+    let voxel = 0
+    for (let i = 0; i < nx; i++) {
+      for (let j = 0; j < ny; j++) {
+        for (let k = 0; k < nz; k++, voxel++) {
+          if (voxel > 0 && voxel % 32768 === 0) yield
+          const label = this.#labels[voxel]
+          if (!label) continue
+          const threshold = label === 1 ? 0 : halfWidth
+          const passes = (index: number) => sideSign * (
+            ((projections[index].offset + stepI * i) + stepJ * j) + stepK * k
+          ) > threshold
+          if (!passes(testedCount - 1)) continue
+          let low = 0
+          let high = testedCount - 1
+          if (!passes(0)) {
+            while (low < high) {
+              const mid = Math.floor((low + high) / 2)
+              if (passes(mid)) high = mid
+              else low = mid + 1
+            }
+          }
+          if (label === 1) removed[low]++
+          else qualifyingTumour[low]++
+        }
+      }
+    }
+    let remainingCount = this.#labelCounts.parenchyma
+    let tumourCount = 0
+    let qualifyingCount = 0
+    let bestCount = -1
+    let bestOffset = currentOffsetMm
+    let currentCount = -1
+    let currentQualifies = false
+    for (let index = 0; index < testedCount; index++) {
+      const offsetMm = backwards ? limit - index : minOffsetMm + index
+      remainingCount -= removed[index]
+      tumourCount += qualifyingTumour[index]
+      const qualifies = tumourCount === this.#labelCounts.tumour
+      if (offsetMm === currentOffsetMm) {
+        currentCount = remainingCount
+        currentQualifies = qualifies
+      }
+      if (!qualifies) continue
+      qualifyingCount++
+      const distance = Math.abs(offsetMm - currentOffsetMm)
+      const bestDistance = Math.abs(bestOffset - currentOffsetMm)
+      if (remainingCount > bestCount || (remainingCount === bestCount
+          && (distance < bestDistance || (distance === bestDistance && offsetMm < bestOffset)))) {
+        bestCount = remainingCount
+        bestOffset = offsetMm
+      }
+    }
+    const summary = { minOffsetMm, maxOffsetMm, testedCount, qualifyingCount }
+    if (qualifyingCount === 0) return { ...summary, outcome: 'none_qualify' }
+    if (bestCount <= currentCount) return { ...summary, outcome: currentQualifies ? 'current_best' : 'no_gain' }
+    yield
+    const winningPlane = planeAt(bestOffset - minOffsetMm)
+    return {
+      ...summary, outcome: 'improvement',
+      alternative: { offsetMm: bestOffset, plane: winningPlane, result: this.evaluate(winningPlane) },
     }
   }
 

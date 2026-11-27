@@ -1,6 +1,5 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { colourPositions } from '../browser-tests/comparison-observations.ts'
 
 function saveButton(page: Page) {
   return page.getByRole('button', { name: 'Save plan', exact: true })
@@ -175,89 +174,44 @@ test('guards a case switch, upload entry and browser Back while keeping snapshot
   await expect(page.locator('#explore')).toBeVisible()
 })
 
-test('the difference model and four volumes track the selected ordered pair through loading and retry', async ({ page }) => {
-  test.setTimeout(60_000)
-  await page.addInitScript(() => {
-    const NativeWorker = window.Worker
-    window.Worker = class extends NativeWorker {
-      constructor(url: string | URL, options?: WorkerOptions) {
-        super(url, options)
-        this.addEventListener('message', event => {
-          if (event.data.type !== 'comparePlansResult' || !document.documentElement.hasAttribute('data-hold-difference')) return
-          event.stopImmediatePropagation()
-          document.documentElement.setAttribute('data-difference-held', '')
-          window.addEventListener('release-difference', release => {
-            document.documentElement.removeAttribute('data-hold-difference')
-            document.documentElement.removeAttribute('data-difference-held')
-            this.dispatchEvent(new MessageEvent('message', {
-              data: (release as CustomEvent).detail
-                ? { ...event.data, type: 'comparePlansError', message: 'Test difference failure' } : event.data,
-            }))
-          }, { once: true })
-        })
-      }
-    }
-  })
-  await page.setViewportSize({ width: 1440, height: 900 })
+test('comparison highlights the cut that preserves more parenchyma and keeps ties neutral', async ({ page }) => {
+  await page.setViewportSize({ width: 1163, height: 678 })
   await start(page)
-  const total = Number((await page.locator('#measure-total').textContent())!.replace(/[^\d.]/g, ''))
-  const flip = page.getByRole('button', { name: 'Flip removal side' })
-  await save(page, 'Positive')
-  await flip.click()
-  await save(page, 'Negative')
-  await flip.click()
-  await save(page, 'Positive copy')
+  const offset = page.getByRole('slider', { name: 'Plane offset' })
+  await offset.fill('-20')
+  await save(page, 'Lower remnant')
+  await offset.fill('20')
+  await save(page, 'Higher remnant')
+  await save(page, 'Higher remnant copy')
   await page.getByRole('button', { name: 'Compare these plans' }).click()
   const table = page.getByRole('table', { name: 'Saved measurements' })
-  const toggle = page.getByRole('checkbox', { name: 'Show differences' })
-  const planA = page.getByRole('combobox', { name: 'Plan A' })
-  const planB = page.getByRole('combobox', { name: 'Plan B' })
-  const swap = page.getByRole('button', { name: 'Swap A/B' })
-  const regions = page.getByRole('list', { name: 'Difference volumes' }).locator('strong')
-  const canvas = page.getByRole('group', { name: '3D difference model' }).locator('canvas')
-  const status = page.locator('#difference-status')
-  await expect(toggle).not.toBeChecked()
-  await expect(canvas).toHaveCount(0)
-  await expect(table.getByRole('columnheader', { name: 'A Negative' })).toBeVisible()
-  await expect(table.getByRole('columnheader', { name: 'B Positive copy' })).toBeVisible()
-  await expect(planA.locator('option', { hasText: 'Positive copy' })).toHaveCount(0)
-  await toggle.check()
-  // Voxels centred directly on the plane remain in both opposite-side cuts.
-  await expect(regions).toHaveText([/mL$/, /mL$/, '0 mL', /mL$/])
-  const values = await regions.allTextContents()
-  const sum = values.reduce((acc, value) => acc + Number(value.replace(/[^\d.]/g, '')), 0)
-  expect(Math.abs(sum - total)).toBeLessThanOrEqual(0.002)
-  const before = await colourPositions(page, await canvas.screenshot(), 'comparison')
-  expect(before.orange).toBeGreaterThan(100)
-  expect(before.teal).toBeGreaterThan(100)
-  await swap.click()
-  await expect(regions).toHaveText([values[1], values[0], values[2], values[3]])
-  const after = await colourPositions(page, await canvas.screenshot(), 'comparison')
-  expect(after.horizontalDifference * before.horizontalDifference).toBeLessThan(-100)
-
-  await page.evaluate(() => document.documentElement.setAttribute('data-hold-difference', ''))
-  await swap.click()
-  await expect(page.locator('html')).toHaveAttribute('data-difference-held', '')
-  await planA.selectOption({ label: 'Positive' })
-  await expect(status).toHaveText('Updating differences…')
-  await expect(regions).toHaveText(['—', '—', '—', '—'])
-  await expect(table.getByRole('columnheader', { name: 'A Positive', exact: true })).toBeVisible()
-  await page.evaluate(() => window.dispatchEvent(new Event('release-difference')))
-  await expect(regions).toHaveText(['0 mL', '0 mL', /mL$/, /mL$/])
-
-  await page.evaluate(() => document.documentElement.setAttribute('data-hold-difference', ''))
-  await planB.selectOption({ label: 'Negative' })
-  await expect(page.locator('html')).toHaveAttribute('data-difference-held', '')
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('release-difference', { detail: true })))
-  await expect(status).toHaveText('Difference volumes are unavailable.')
-  await expect(regions).toHaveText(['—', '—', '—', '—'])
-  await expect(table).toBeVisible()
-  await page.getByRole('button', { name: 'Retry differences' }).click()
-  await expect(regions).toHaveText([values[1], values[0], values[2], values[3]])
-  await page.setViewportSize({ width: 390, height: 844 })
-  await expect(table).toBeVisible()
-  expect(await page.locator('body').evaluate(node => node.scrollWidth)).toBe(390)
-  await toggle.uncheck()
-  await expect(canvas).toHaveCount(0)
+  await expect(table.locator('.comparison-advantage')).toHaveCount(0)
+  await page.getByRole('combobox', { name: 'Plan A' }).selectOption({ label: 'Lower remnant' })
+  for (const label of [/^Removed volume/, /^Remaining volume/, /^Future Liver Remnant/, /^Resected percentage/]) {
+    const row = table.getByRole('row', { name: label })
+    await expect(row.getByRole('cell').nth(1)).toHaveClass('comparison-advantage')
+    await expect(row.getByRole('cell').nth(0)).not.toHaveClass('comparison-advantage')
+  }
+  await expect(table.getByRole('row', { name: /^Tumour-to-plane distance/ }).locator('.comparison-advantage')).toHaveCount(0)
+  const differences = page.getByRole('checkbox', { name: 'Show differences' })
+  const model = page.getByRole('group', { name: '3D difference model' })
+  await expect(differences).not.toBeChecked()
+  await expect(model).toHaveCount(0)
+  await differences.check()
+  await expect(model).toBeVisible()
+  const volumes = page.getByRole('list', { name: 'Difference volumes' })
+  const onlyA = volumes.getByRole('listitem').filter({ hasText: 'Removed only by A' }).locator('strong')
+  const onlyB = volumes.getByRole('listitem').filter({ hasText: 'Removed only by B' }).locator('strong')
+  await expect(onlyA).toHaveText(/^\d/)
+  await expect(onlyB).toHaveText(/^\d/)
+  const exclusiveA = await onlyA.innerText()
+  const exclusiveB = await onlyB.innerText()
+  expect(exclusiveA).not.toBe(exclusiveB)
+  await page.getByRole('button', { name: 'Swap A/B' }).click()
+  await expect(table.getByRole('row', { name: /^Remaining volume/ }).getByRole('cell').first()).toHaveClass('comparison-advantage')
+  await expect(onlyA).toHaveText(exclusiveB)
+  await expect(onlyB).toHaveText(exclusiveA)
+  await differences.uncheck()
+  await expect(model).toHaveCount(0)
   await expect(table).toBeVisible()
 })

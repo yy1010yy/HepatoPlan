@@ -1,0 +1,773 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "tumourCentres": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "removal",
+        "retained",
+        "onPlane"
+      ],
+      "properties": {
+        "removal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retained": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "onPlane": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "procedureType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "\\S"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "\\S"
+        }
+      }
+    },
+    "measurements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totalParenchymaMl",
+        "resectedMl",
+        "remainingMl",
+        "flrPercent",
+        "resectedPercent",
+        "tumourIntersectsPlane",
+        "tumourPlaneDistanceMm",
+        "tumourCentres"
+      ],
+      "properties": {
+        "totalParenchymaMl": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "resectedMl": {
+          "type": "number",
+          "minimum": 0
+        },
+        "remainingMl": {
+          "type": "number",
+          "minimum": 0
+        },
+        "flrPercent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "resectedPercent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "tumourIntersectsPlane": {
+          "type": "boolean"
+        },
+        "tumourPlaneDistanceMm": {
+          "type": "number",
+          "minimum": 0
+        },
+        "tumourCentres": {
+          "$ref": "#/definitions/tumourCentres"
+        }
+      }
+    },
+    "savedMeasurements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totalParenchymaMl",
+        "resectedMl",
+        "remainingMl",
+        "flrPercent",
+        "resectedPercent",
+        "tumourIntersectsPlane",
+        "tumourPlaneDistanceMm"
+      ],
+      "properties": {
+        "totalParenchymaMl": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "resectedMl": {
+          "type": "number",
+          "minimum": 0
+        },
+        "remainingMl": {
+          "type": "number",
+          "minimum": 0
+        },
+        "flrPercent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "resectedPercent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "tumourIntersectsPlane": {
+          "type": "boolean"
+        },
+        "tumourPlaneDistanceMm": {
+          "type": "number",
+          "minimum": 0
+        },
+        "tumourCentres": {
+          "$ref": "#/definitions/tumourCentres"
+        }
+      }
+    },
+    "cut": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caseId",
+        "releaseId",
+        "offsetMm",
+        "angleDeg",
+        "resectSide",
+        "measurements"
+      ],
+      "properties": {
+        "caseId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "releaseId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "offsetMm": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "angleDeg": {
+          "type": "number",
+          "minimum": -45,
+          "maximum": 45
+        },
+        "resectSide": {
+          "enum": [
+            "positive",
+            "negative"
+          ]
+        },
+        "context": {
+          "$ref": "#/definitions/context"
+        },
+        "measurements": {
+          "$ref": "#/definitions/measurements"
+        }
+      }
+    },
+    "savedCut": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caseId",
+        "releaseId",
+        "offsetMm",
+        "angleDeg",
+        "resectSide",
+        "measurements"
+      ],
+      "properties": {
+        "caseId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "releaseId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "offsetMm": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "angleDeg": {
+          "type": "number",
+          "minimum": -45,
+          "maximum": 45
+        },
+        "resectSide": {
+          "enum": [
+            "positive",
+            "negative"
+          ]
+        },
+        "context": {
+          "$ref": "#/definitions/context"
+        },
+        "measurements": {
+          "$ref": "#/definitions/savedMeasurements"
+        }
+      }
+    },
+    "search": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "minOffsetMm",
+            "maxOffsetMm",
+            "testedCount",
+            "qualifyingCount",
+            "outcome",
+            "alternative"
+          ],
+          "properties": {
+            "minOffsetMm": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "maxOffsetMm": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "testedCount": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "qualifyingCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "outcome": {
+              "const": "improvement"
+            },
+            "alternative": {
+              "$ref": "#/definitions/cut"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "minOffsetMm",
+            "maxOffsetMm",
+            "testedCount",
+            "qualifyingCount",
+            "outcome"
+          ],
+          "properties": {
+            "minOffsetMm": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "maxOffsetMm": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "testedCount": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "qualifyingCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "outcome": {
+              "enum": [
+                "current_best",
+                "no_gain",
+                "none_qualify"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "differenceVolumes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "removedOnlyByAMl",
+        "removedOnlyByBMl",
+        "removedByBothMl",
+        "retainedByBothMl"
+      ],
+      "properties": {
+        "removedOnlyByAMl": {
+          "type": "number",
+          "minimum": 0
+        },
+        "removedOnlyByBMl": {
+          "type": "number",
+          "minimum": 0
+        },
+        "removedByBothMl": {
+          "type": "number",
+          "minimum": 0
+        },
+        "retainedByBothMl": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "singleRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "requestId",
+        "releaseId",
+        "caseId",
+        "revision",
+        "current",
+        "search"
+      ],
+      "properties": {
+        "version": {
+          "const": 2
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "releaseId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "caseId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "current": {
+          "$ref": "#/definitions/cut"
+        },
+        "search": {
+          "$ref": "#/definitions/search"
+        }
+      }
+    },
+    "comparisonRequest": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "version",
+            "requestId",
+            "releaseId",
+            "caseId",
+            "planAId",
+            "planBId",
+            "planA",
+            "planB",
+            "spatialStatus",
+            "differenceVolumes"
+          ],
+          "properties": {
+            "version": {
+              "const": 2
+            },
+            "requestId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            },
+            "releaseId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            },
+            "caseId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            },
+            "planAId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            },
+            "planBId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            },
+            "planA": {
+              "$ref": "#/definitions/savedCut"
+            },
+            "planB": {
+              "$ref": "#/definitions/savedCut"
+            },
+            "spatialStatus": {
+              "const": "ready"
+            },
+            "differenceVolumes": {
+              "$ref": "#/definitions/differenceVolumes"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "version",
+            "requestId",
+            "releaseId",
+            "caseId",
+            "planAId",
+            "planBId",
+            "planA",
+            "planB",
+            "spatialStatus"
+          ],
+          "properties": {
+            "version": {
+              "const": 2
+            },
+            "requestId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            },
+            "releaseId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            },
+            "caseId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            },
+            "planAId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            },
+            "planBId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            },
+            "planA": {
+              "$ref": "#/definitions/savedCut"
+            },
+            "planB": {
+              "$ref": "#/definitions/savedCut"
+            },
+            "spatialStatus": {
+              "const": "unavailable"
+            }
+          }
+        }
+      ]
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "evidence"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "\\S"
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z][A-Za-z0-9]*(\\.[A-Za-z][A-Za-z0-9]*)*$"
+          }
+        }
+      }
+    },
+    "singleResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "requestId",
+        "releaseId",
+        "caseId",
+        "revision",
+        "mode",
+        "finding",
+        "observations",
+        "limitations",
+        "recommendation"
+      ],
+      "properties": {
+        "version": {
+          "const": 2
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "releaseId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "caseId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "mode": {
+          "const": "single"
+        },
+        "finding": {
+          "$ref": "#/definitions/finding"
+        },
+        "observations": {
+          "type": "array",
+          "maxItems": 5,
+          "items": {
+            "$ref": "#/definitions/finding"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "volume_only",
+              "geometric_gap_only",
+              "tumour_side_unmeasured",
+              "spatial_unavailable"
+            ]
+          }
+        },
+        "recommendation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "rationale",
+            "evidence"
+          ],
+          "properties": {
+            "action": {
+              "enum": [
+                "preview_alternative",
+                "inspect_plane",
+                "inspect_removal_side",
+                "view_measurements"
+              ]
+            },
+            "rationale": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500,
+              "pattern": "\\S"
+            },
+            "evidence": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "pattern": "^[A-Za-z][A-Za-z0-9]*(\\.[A-Za-z][A-Za-z0-9]*)*$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "comparisonResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "requestId",
+        "releaseId",
+        "caseId",
+        "planAId",
+        "planBId",
+        "mode",
+        "finding",
+        "observations",
+        "limitations",
+        "recommendation"
+      ],
+      "properties": {
+        "version": {
+          "const": 2
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "releaseId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "caseId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "planAId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "planBId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "mode": {
+          "const": "comparison"
+        },
+        "finding": {
+          "$ref": "#/definitions/finding"
+        },
+        "observations": {
+          "type": "array",
+          "maxItems": 5,
+          "items": {
+            "$ref": "#/definitions/finding"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "volume_only",
+              "geometric_gap_only",
+              "tumour_side_unmeasured",
+              "spatial_unavailable"
+            ]
+          }
+        },
+        "recommendation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "rationale",
+            "evidence"
+          ],
+          "properties": {
+            "action": {
+              "enum": [
+                "open_plan_a",
+                "open_plan_b",
+                "view_measurements"
+              ]
+            },
+            "rationale": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500,
+              "pattern": "\\S"
+            },
+            "evidence": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "pattern": "^[A-Za-z][A-Za-z0-9]*(\\.[A-Za-z][A-Za-z0-9]*)*$"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

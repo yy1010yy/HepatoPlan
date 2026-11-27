@@ -5,6 +5,7 @@ import type { CaseState, ComparisonPair } from './planning/case-controller.ts'
 import { defaultPlane } from './planning/plane-controls.ts'
 import type { ResectionPlane } from './planning/plane.ts'
 import type { PlanDetails, SavedPlan } from './planning/plan-session.ts'
+import type { OffsetSearchResult } from './planning/volumetry.ts'
 import { planContextFor, planContextValues } from './plan-context.ts'
 
 type View = 'landing' | 'plan' | 'compare'
@@ -36,6 +37,7 @@ export function usePlanWorkflow(planning: ReturnType<typeof usePreparedCases>, d
   const [baseline, setBaseline] = useState<SavedPlan>()
   const [context, setContext] = useState(() => planContextFor())
   const [lastSave, setLastSave] = useState<SavedPlan>()
+  const [lastAlternative, setLastAlternative] = useState<SavedPlan>()
   const [selection, setSelection] = useState<{ pair: ComparisonPair; plans: readonly SavedPlan[] }>()
   const [caseOpener, setCaseOpener] = useState<HTMLElement | null>(null)
   const [uploadOpener, setUploadOpener] = useState<HTMLButtonElement | null>(null)
@@ -87,6 +89,7 @@ export function usePlanWorkflow(planning: ReturnType<typeof usePreparedCases>, d
           setBaseline(undefined)
           setContext(planContextFor())
           setLastSave(undefined)
+          setLastAlternative(undefined)
           setSelection(undefined)
           lastReady.current = null
           planning.selectCase(destination.caseId)
@@ -126,6 +129,12 @@ export function usePlanWorkflow(planning: ReturnType<typeof usePreparedCases>, d
     else setSaveOpener(null)
   }
 
+  function saveAlternative(details: Pick<PlanDetails, 'name' | 'notes'>, search: OffsetSearchResult) {
+    if (!session) throw new Error('The case is unavailable.')
+    const plan = session.saveAlternative({ ...details, ...planContextValues(context) }, search)
+    setLastAlternative(plan)
+  }
+
   const syncRoute = useEffectEvent(() => {
     const hash = location.hash
     const next = viewFor(hash)
@@ -160,7 +169,7 @@ export function usePlanWorkflow(planning: ReturnType<typeof usePreparedCases>, d
     view, plans, selection, baseline, context, setContext, dirty, canSave, pending, caseOpener, uploadOpener, savedOpener, saveOpener,
     savedName: !dirty && lastSave === baseline ? lastSave?.name : undefined,
     setCaseOpener, setUploadOpener, setSavedOpener, setSaveOpener, setPending,
-    save, goCompare, explore, request,
+    save, saveAlternative, alternativeSavedName: lastAlternative?.name, goCompare, explore, request,
     discard() { if (pending) perform(pending.destination, true) },
     backToPlan() { navigate('plan') },
     setPair(pair: ComparisonPair) { if (selection) setSelection({ ...selection, pair }) },

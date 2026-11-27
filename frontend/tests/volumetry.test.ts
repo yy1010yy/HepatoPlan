@@ -49,6 +49,66 @@ function close(actual: number, expected: number, tolerance = 1e-12) {
   assert.ok(Math.abs(actual - expected) <= tolerance, `Expected ${expected}, got ${actual}`)
 }
 
+test('offset search agrees with exhaustive evaluation on both sides of oblique and reflected grids', () => {
+  const outcomes = new Set<string>()
+  for (const affine of [identity, [
+    [-2, 0.25, 0, 3], [0, 3, 0.5, 0], [0, 0, 4, -2], identity[3],
+  ] as CaseMetadata['voxelToWorldMm']]) {
+    for (const separatedTumours of [false, true]) {
+      const { metadata, labels } = fixture([7, 3, 3], (i, j, k) =>
+        j === 0 && k === 0 && (i === 5 || (separatedTumours && i === 1)) ? 2 : 1, affine)
+      const prepared = new PreparedCase(metadata, labels)
+      for (const unitNormal of [[1, 0, 0], [0.8, 0.6, 0]] as const) {
+        for (const resectSide of ['positive', 'negative'] as const) {
+          const centre: Vec3 = [0.5, 0, 0]
+          const limit = 5
+          const all = Array.from({ length: limit * 2 + 1 }, (_, index) => {
+            const offsetMm = index - limit
+            const plane: ResectionPlane = { pointMm: [centre[0] + offsetMm, 0, 0], unitNormal, resectSide }
+            return { offsetMm, plane, result: prepared.evaluate(plane) }
+          })
+          const qualifies = (entry: typeof all[number]) => !entry.result.tumourIntersectsPlane
+            && entry.result.tumourCentres.removal === metadata.labelCounts.tumour
+          for (const current of all) {
+            const candidates = all.filter(qualifies).sort((a, b) => b.result.remainingMl - a.result.remainingMl
+              || Math.abs(a.offsetMm - current.offsetMm) - Math.abs(b.offsetMm - current.offsetMm)
+              || a.offsetMm - b.offsetMm)
+            const best = candidates[0]
+            const steps = prepared.searchOffsets(current.plane, centre, limit, current.offsetMm)
+            let found = steps.next()
+            while (!found.done) found = steps.next()
+            const outcome = !best ? 'none_qualify' : best.result.remainingMl > current.result.remainingMl
+              ? 'improvement' : qualifies(current) ? 'current_best' : 'no_gain'
+            assert.equal(found.value.outcome, outcome)
+            assert.equal(found.value.qualifyingCount, candidates.length)
+            assert.equal(found.value.testedCount, all.length)
+            if (found.value.outcome === 'improvement') assert.deepEqual(found.value.alternative, best)
+            outcomes.add(outcome)
+          }
+        }
+      }
+    }
+  }
+  assert.deepEqual(outcomes, new Set(['improvement', 'current_best', 'no_gain', 'none_qualify']))
+})
+
+test('tumour centres track removal side separately from voxel contact', () => {
+  const { metadata, labels } = fixture([5, 1, 1], i => i === 0 || i === 4 ? 2 : 1)
+  const prepared = new PreparedCase(metadata, labels)
+  const gap = prepared.evaluate(xPlane(2))
+  assert.equal(gap.tumourIntersectsPlane, false)
+  assert.deepEqual(gap.tumourCentres, { removal: 1, retained: 1, onPlane: 0 })
+  const face = prepared.evaluate(xPlane(-0.5))
+  assert.equal(face.tumourIntersectsPlane, true)
+  assert.deepEqual(face.tumourCentres, { removal: 2, retained: 0, onPlane: 0 })
+  const onPlane = prepared.evaluate(xPlane(0))
+  const flipped = prepared.evaluate(xPlane(0, 'negative'))
+  assert.deepEqual(onPlane.tumourCentres, { removal: 1, retained: 0, onPlane: 1 })
+  assert.deepEqual(flipped.tumourCentres, { removal: 0, retained: 1, onPlane: 1 })
+  assert.equal(onPlane.tumourIntersectsPlane, flipped.tumourIntersectsPlane)
+  assert.equal(onPlane.tumourPlaneDistanceMm, flipped.tumourPlaneDistanceMm)
+})
+
 test('ordered plan comparisons partition the parenchyma and reconcile with both measurements', () => {
   const { metadata, labels } = cube()
   const reflected = fixture([5, 4, 4], (i, j, k) => i < 4 ? 1 : (j === 0 && k === 0 ? 2 : 0), [

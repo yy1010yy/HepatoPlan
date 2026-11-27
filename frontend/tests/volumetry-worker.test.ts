@@ -69,6 +69,28 @@ test('browser worker transfers the mask once and uses the prepared case for repe
   assert.equal(second.result.resectedMl, 0)
 })
 
+test('worker returns a measured search winner and echoes the source identity on errors', async t => {
+  useBrowserAdapter(t)
+  const worker = startVolumetryWorker(4, metadata, new Uint8Array([1, 1, 2]).buffer) as unknown as NodeWorker
+  t.after(async () => { await worker.terminate() })
+  await receive(worker)
+  const search = { selectionToken: 4, revision: 4, searchRequestId: 19 }
+  const input = { type: 'searchOffsets', ...search, plane: { ...evaluate.plane, pointMm: [0, 0, 0] },
+    centre: [0, 0, 0], limit: 3, currentOffsetMm: 0 }
+  worker.postMessage(input)
+  const reply = await receive(worker)
+  assert(reply.type === 'searchResult' && reply.result.outcome === 'improvement')
+  assert.deepEqual([reply.selectionToken, reply.revision, reply.searchRequestId], [4, 4, 19])
+  assert.equal(reply.result.alternative.offsetMm, 1)
+  assert.equal(reply.result.alternative.result.remainingMl, 0.002)
+  assert.deepEqual(reply.result.alternative.result.tumourCentres, { removal: 1, retained: 0, onPlane: 0 })
+  worker.postMessage({ ...input, searchRequestId: 20, currentOffsetMm: 4 })
+  assert.deepEqual(await receive(worker), {
+    type: 'searchError', ...search, searchRequestId: 20,
+    message: 'Search requires the current slider offset and case bounds.',
+  })
+})
+
 test('worker distinguishes initialization errors from calculation errors', async t => {
   useBrowserAdapter(t)
   const bad = startVolumetryWorker(3, metadata, new Uint8Array([1, 3, 2]).buffer) as unknown as NodeWorker
