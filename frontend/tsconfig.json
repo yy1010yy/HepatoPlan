@@ -2,6 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "NodeNext",
+    "jsx": "react-jsx",
     "strict": true,
     "noEmit": true,
     "verbatimModuleSyntax": true,
@@ -14,8 +15,12 @@
   },
   "include": [
     "src/**/*.ts",
+    "src/**/*.tsx",
     "tests/**/*.ts",
     "browser-tests/**/*.ts",
-    "playwright.config.ts"
+    "playwright.config.ts",
+    "playwright.app.config.ts",
+    "vite.config.ts",
+    "app-tests/**/*.ts"
   ]
 }
