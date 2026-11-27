@@ -11,7 +11,11 @@ npm.cmd run dev
 
 Open the local URL printed by Vite. The landing preview rotates the prepared demo, `case-002`. **Explore HepatoPlan** opens the same case in Plan, where you can orbit, pan and zoom. Focus the model to use arrow keys for orbit, Shift plus arrow keys for pan, and + or − for zoom. The workspace header opens the case chooser. The initial cut produces live worker readings, which stay available if the 3D view needs a retry.
 
-**Try a CT upload** previews the local file picker and opens the prepared demo. The app displays the filename only while the dialog is open. Plan provides geometric presets, live plane and display controls, and measurements for the current cut. Named plan snapshots are scheduled for FT-10.
+**Try a CT upload** previews the local file picker and opens the prepared demo. The app displays the filename only while the dialog is open. Plan provides geometric presets, live plane and display controls, and measurements for the current cut.
+
+When the current measurements are ready, **Save plan** records a named snapshot. Use **Saved plans** to reopen a cut from the current case and release. Plans stay in the browser tab until you refresh or close it. The app prompts before replacing or leaving an edited working cut.
+
+With two snapshots, **Compare** opens the saved measurements side by side. Choose distinct plans, swap A and B, or open either cut in Plan. **Back to planning** returns to the working cut. Turn on **Show differences** to calculate and display the four spatial regions for the selected pair.
 
 ## Regenerate the landing studies
 

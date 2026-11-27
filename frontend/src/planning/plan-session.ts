@@ -4,7 +4,7 @@ import type { ResectionPlane } from './plane.ts'
 import type { Vec3 } from './case-contract.ts'
 import type { VolumetryResult } from './volumetry.ts'
 
-type PlanDetails = {
+export type PlanDetails = {
   readonly name: string
   readonly procedureType?: string
   readonly reason?: string
@@ -22,6 +22,14 @@ export type SavedPlan = PlanDetails & {
 export type PlanComparison = {
   readonly plans: ReadonlyArray<SavedPlan>
   readonly rows: ReadonlyArray<{ label: string; values: readonly string[] }>
+}
+
+export function compareSavedPlans(plans: readonly SavedPlan[], locale = 'en'): PlanComparison {
+  const columns = plans.map(plan => measurementRows(plan.result, locale, false))
+  const rows = columns[0].map(({ label }, row) => ({
+    label, values: columns.map(column => column[row].value),
+  }))
+  return { plans, rows }
 }
 
 function scope(state: Extract<CaseState, { status: 'ready' }>): string {
@@ -96,11 +104,7 @@ export class PlanSession {
     }
     const current = this.list()
     const plans = planIds.map(planId => this.#find(planId, current))
-    const columns = plans.map(plan => measurementRows(plan.result, locale, false))
-    const rows = columns[0].map(({ label }, row) => ({
-      label, values: columns.map(column => column[row].value),
-    }))
-    return { plans, rows }
+    return compareSavedPlans(plans, locale)
   }
 
   #find(planId: string, current = this.list()): SavedPlan {

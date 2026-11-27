@@ -20,11 +20,11 @@ function containTab(event: KeyboardEvent<HTMLDialogElement>) {
   }
 }
 
-function Dialog({ id, titleId, opener, initialFocus, cancel, fallback, onCancel, children }: {
+export function Dialog({ id, titleId, opener, initialFocus, cancel, fallback, onCancel, children }: {
   id: string
   titleId: string
   opener: HTMLElement | null
-  initialFocus: RefObject<HTMLButtonElement | null>
+  initialFocus: RefObject<HTMLElement | null>
   cancel: RefObject<HTMLButtonElement | null>
   fallback: RefObject<HTMLButtonElement | null>
   onCancel: () => void
@@ -63,7 +63,7 @@ export function CaseChooser({ opener, fallback, activeId, cases, status, onCance
   cases: readonly { caseId: string }[]
   status: LoadStatus
   onCancel: () => void
-  onSelect: (id: string) => void
+  onSelect: (id: string, opener: HTMLButtonElement) => void
   onRetry: () => void
   onUpload: MouseEventHandler<HTMLButtonElement>
 }) {
@@ -80,7 +80,7 @@ export function CaseChooser({ opener, fallback, activeId, cases, status, onCance
           <li key={caseId}>
             <Button className="case-option" aria-current={caseId === activeId ? 'true' : undefined}
               ref={caseId === initialId ? initialCase : undefined}
-              onClick={() => onSelect(caseId)}>
+              onClick={event => onSelect(caseId, event.currentTarget)}>
               <span>{caseId}</span>
               {caseId === activeId && <span className="pill">Active</span>}
             </Button>
@@ -103,7 +103,7 @@ export function UploadPreview({ opener, fallback, unavailable, onCancel, onConti
   fallback: RefObject<HTMLButtonElement | null>
   unavailable: boolean
   onCancel: () => void
-  onContinue: () => void
+  onContinue: MouseEventHandler<HTMLButtonElement>
 }) {
   const [filename, setFilename] = useState('')
   const picker = useRef<HTMLInputElement>(null)

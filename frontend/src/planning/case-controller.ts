@@ -113,7 +113,10 @@ export class CaseController {
 
   selectComparison(planA?: SavedPlan, planB?: SavedPlan): void {
     const state = this.#state
-    if (state.status !== 'ready') return
+    if (state.status !== 'ready') {
+      if (!planA || !planB) this.#desiredPair = undefined
+      return
+    }
     if (!planA || !planB || planA.id === planB.id || [planA, planB].some(plan => (
       plan.caseId !== state.caseId || plan.releaseId !== state.metadata.releaseId
     ))) {
@@ -158,8 +161,10 @@ export class CaseController {
 
   restorePlane(input: ResectionPlane): void {
     const state = this.#state
-    if (state.status !== 'ready') throw new Error('Load a case before opening a saved plane.')
-    this.#queueMeasurement(state, normalisePlane(input))
+    if (state.status === 'idle') throw new Error('Load a case before opening a saved plane.')
+    const plane = normalisePlane(input)
+    if (state.status === 'ready') this.#queueMeasurement(state, plane)
+    else this.#desiredPlane = plane
   }
 
   setPlaneAngle(angleDeg: number): boolean {

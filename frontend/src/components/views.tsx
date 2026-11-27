@@ -10,6 +10,8 @@ import { AnatomyViewer } from './anatomy-viewer.tsx'
 import type { ResectionViewerSource } from '../planning/resection-viewer.ts'
 import { LandingContent } from './landing-content.tsx'
 import { Measurements, PlaneControls, Presets } from './plan-widgets.tsx'
+import { PlanDetailsList } from './plan-dialogs.tsx'
+import type { SavedPlan } from '../planning/plan-session.ts'
 
 type CaseActions = {
   status: LoadStatus
@@ -88,11 +90,17 @@ function meshBox({ bounds }: DecodedMesh) {
   return new Box3(new Vector3(...bounds.min), new Vector3(...bounds.max))
 }
 
-export function Workspace({ titleRef, state, controller, planCount, onRetryMeasurement, ...caseActions }: CaseActions & {
+export function Workspace({ titleRef, state, controller, planCount, dirty, baseline, savedName,
+  onSave, onCompare, onRetryMeasurement, ...caseActions }: CaseActions & {
   titleRef: Ref<HTMLHeadingElement>
   state: CaseState
   controller?: CaseController
   planCount: number
+  dirty: boolean
+  baseline?: SavedPlan
+  savedName?: string
+  onSave: MouseEventHandler<HTMLButtonElement>
+  onCompare?: () => void
   onRetryMeasurement: () => void
 }) {
   const [planeVisible, setPlaneVisible] = useState(true)
@@ -105,7 +113,11 @@ export function Workspace({ titleRef, state, controller, planCount, onRetryMeasu
       <div className="workspace-heading">
         <div>
           <h1 id="workspace-title" tabIndex={-1} ref={titleRef}>3D resection planning workspace</h1>
-          <Status id="compare-status">{planCount === 1 ? 'Save one more plan to compare.' : 'Save two plans to compare.'}</Status>
+          <p className="working-cut">{baseline?.name || 'Working cut'}{dirty && <span className="pill">Unsaved changes</span>}</p>
+          {baseline && <PlanDetailsList details={baseline} />}
+          {planCount < 2 && (
+            <Status id="compare-status">{planCount === 1 ? 'Save one more plan to compare.' : 'Save two plans to compare.'}</Status>
+          )}
         </div>
         <Presets state={state} controller={controller} />
       </div>
@@ -117,7 +129,7 @@ export function Workspace({ titleRef, state, controller, planCount, onRetryMeasu
           {state.status === 'ready' && controller && <AnatomyViewer key={state.selectionToken} source={controller}
             planeVisible={planeVisible} liverOpacity={liverOpacity / 100} />}
         </CaseViewport>
-        <Measurements state={state} onRetry={onRetryMeasurement} />
+        <Measurements state={state} onRetry={onRetryMeasurement} onSave={onSave} onCompare={onCompare} savedName={savedName} />
       </div>
     </section>
   )

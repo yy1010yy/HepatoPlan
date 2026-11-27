@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import type { MouseEventHandler } from 'react'
 import { Button, LabelledRange, MetricRow, Status } from './controls.tsx'
 import type { CaseController, CaseState } from '../planning/case-controller.ts'
 import { PLANE_PRESETS, planeReadouts, presetPlane } from '../planning/plane-controls.ts'
@@ -56,7 +57,13 @@ export function PlaneControls({ state, controller, planeVisible, liverOpacity, o
   )
 }
 
-export function Measurements({ state, onRetry }: { state: CaseState; onRetry: () => void }) {
+export function Measurements({ state, onRetry, onSave, onCompare, savedName }: {
+  state: CaseState
+  onRetry: () => void
+  onSave: MouseEventHandler<HTMLButtonElement>
+  onCompare?: () => void
+  savedName?: string
+}) {
   const statusRef = useRef<HTMLParagraphElement>(null)
   const measurements = measurementPanel(state)
   const rows = new Map(measurements.status === 'ready' ? measurements.rows.map(row => [row.label, row.value]) : [])
@@ -85,12 +92,12 @@ export function Measurements({ state, onRetry }: { state: CaseState; onRetry: ()
       <Button id="measurement-retry" hidden={!failed} onClick={() => { statusRef.current?.focus(); onRetry() }}>
         Retry measurements
       </Button>
-      <Button className="button-primary" id="save-plan" disabled={!measurements.canSave} popoverTarget="save-plan-info">
+      <Button className="button-primary" id="save-plan" disabled={!measurements.canSave}
+        aria-haspopup="dialog" onClick={onSave}>
         Save plan
       </Button>
-      {measurements.canSave && <p className="save-plan-info" id="save-plan-info" popover="auto">
-        Named plan snapshots are coming in the save workflow.
-      </p>}
+      {savedName && <Status id="save-status">Saved {savedName}.</Status>}
+      {onCompare && <Button onClick={onCompare}>Compare these plans</Button>}
     </section>
   )
 }

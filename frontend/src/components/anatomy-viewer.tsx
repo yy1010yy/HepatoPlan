@@ -10,8 +10,9 @@ const legend = [
   { label: 'Resection plane', colour: anatomyColours.plane },
 ]
 
-export function AnatomyViewer({ source, rotateOnly = false, planeVisible = true, liverOpacity = 0.55 }: {
-  source: ResectionViewerSource; rotateOnly?: boolean; planeVisible?: boolean; liverOpacity?: number
+export function AnatomyViewer({ source, rotateOnly = false, planeVisible = true, liverOpacity = 0.55,
+  comparison = false }: {
+  source: ResectionViewerSource; rotateOnly?: boolean; planeVisible?: boolean; liverOpacity?: number; comparison?: boolean
 }) {
   const host = useRef<HTMLDivElement>(null)
   const status = useRef<HTMLParagraphElement>(null)
@@ -46,12 +47,13 @@ export function AnatomyViewer({ source, rotateOnly = false, planeVisible = true,
   useEffect(() => {
     instance.current?.setPlaneVisible(planeVisible)
     instance.current?.setLiverOpacity(liverOpacity)
-  }, [planeVisible, liverOpacity, rotateOnly, source, failed])
+    instance.current?.setComparisonVisible(comparison)
+  }, [planeVisible, liverOpacity, comparison, rotateOnly, source, failed])
 
   return (
     <div className="anatomy-viewer">
       <div className="anatomy-stage">
-        <div ref={host} className="anatomy-canvas" role="group" aria-label="3D liver model"
+        <div ref={host} className="anatomy-canvas" role="group" aria-label={comparison ? '3D difference model' : '3D liver model'}
           aria-describedby={helpId} tabIndex={failed ? undefined : 0} hidden={failed} />
         <div className="viewer-error" hidden={!failed}>
           <Status id={`${helpId}-error`} statusRef={status}>The 3D view is unavailable.</Status>
@@ -59,11 +61,11 @@ export function AnatomyViewer({ source, rotateOnly = false, planeVisible = true,
         </div>
       </div>
       <div className="viewer-details" hidden={failed}>
-        <ul className="viewer-legend" aria-label="Anatomy legend">
+        {!comparison && <ul className="viewer-legend" aria-label="Anatomy legend">
           {legend.map(({ colour, label }) => (
             <li key={label}><span style={{ backgroundColor: colour }} aria-hidden="true" />{label}</li>
           ))}
-        </ul>
+        </ul>}
         <p className="status" id={helpId}>
           {rotateOnly ? 'Drag or use arrow keys to rotate.'
             : 'Drag to orbit, right-drag to pan, or scroll to zoom. Keyboard: arrows to orbit, Shift + arrows to pan, + or − to zoom.'}

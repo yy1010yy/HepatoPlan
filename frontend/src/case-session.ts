@@ -109,7 +109,7 @@ export function usePreparedCases() {
 
   return {
     controller, state, activeId, cases, caseStatus, demoStatus, demo: visibleDemo, hasDemo, catalogueStatus,
-    planCount: session?.list().length ?? 0,
+    session,
     selectCase,
     loadCatalogue,
     retryCase() {
