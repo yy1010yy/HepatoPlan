@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { anatomyColours, mountResectionViewer } from '../planning/resection-viewer.ts'
 import type { ResectionViewerSource } from '../planning/resection-viewer.ts'
+import type { ResectionPlane } from '../planning/plane.ts'
 import { Button, Status } from './controls.tsx'
 
 const legend = [
@@ -11,8 +12,9 @@ const legend = [
 ]
 
 export function AnatomyViewer({ source, rotateOnly = false, planeVisible = true, liverOpacity = 0.55,
-  comparison = false }: {
+  comparison = false, previewPlane }: {
   source: ResectionViewerSource; rotateOnly?: boolean; planeVisible?: boolean; liverOpacity?: number; comparison?: boolean
+  previewPlane?: ResectionPlane
 }) {
   const host = useRef<HTMLDivElement>(null)
   const status = useRef<HTMLParagraphElement>(null)
@@ -47,8 +49,9 @@ export function AnatomyViewer({ source, rotateOnly = false, planeVisible = true,
   useEffect(() => {
     instance.current?.setPlaneVisible(planeVisible)
     instance.current?.setLiverOpacity(liverOpacity)
+    instance.current?.setPreviewPlane(previewPlane)
     instance.current?.setComparisonVisible(comparison)
-  }, [planeVisible, liverOpacity, comparison, rotateOnly, source, failed])
+  }, [planeVisible, liverOpacity, rotateOnly, source, failed, previewPlane, comparison])
 
   return (
     <div className="anatomy-viewer">

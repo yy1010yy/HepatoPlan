@@ -32,6 +32,8 @@ npm.cmd --prefix api start
 
 The API listens at `127.0.0.1:4191`. Its start command loads the repository-root `.env` if present. Use `.env.example` as the template and set `GEMINI_API_KEY` in the local `.env` when you are ready for a live check. `GEMINI_MODEL` defaults to `gemini-3.1-flash-lite`. An empty key leaves the API available for validation and returns HTTP 503 for a valid analysis request. A custom `HEPATOPLAN_API_PORT` must be supplied to both the API and Vite processes.
 
+The API allows Gemini up to 20 seconds to respond. If the deadline expires, the user can retry analysis with the same measured cut.
+
 Start the frontend in a second terminal. Both development and preview proxy origin-root `/api/` to the local API.
 
 ```powershell

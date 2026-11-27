@@ -744,7 +744,6 @@
               "enum": [
                 "open_plan_a",
                 "open_plan_b",
-                "show_differences",
                 "view_measurements"
               ]
             },

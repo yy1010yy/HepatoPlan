@@ -96,7 +96,7 @@ test('comparison handles missing regions, equal FLR with distinct regions, and m
   const unavailable = prepareAnalysis('comparison', { ...request, spatialStatus: 'unavailable' }, tumourCount)
   assert(unavailable)
   assert(unavailable.providerInput.limitations.includes('spatial_unavailable'))
-  assert(!unavailable.providerInput.actions.some(action => action.id === 'show_differences'))
+  assert(!unavailable.providerInput.observations.some(observation => observation.id === 'exclusive_regions'))
   for (const exclusive of [20, 0]) {
     const equal = prepareAnalysis('comparison', {
       ...comparison.request, planB: comparison.request.planA, differenceVolumes: {
@@ -106,7 +106,8 @@ test('comparison handles missing regions, equal FLR with distinct regions, and m
     }, tumourCount)
     assert(equal)
     assert.equal(equal.providerInput.findings[0].id, 'equal_remaining')
-    assert.equal(equal.providerInput.actions.some(action => action.id === 'show_differences'), exclusive > 0)
+    assert.equal(equal.providerInput.observations.some(observation => observation.id === 'exclusive_regions'), exclusive > 0)
+    assert(equal.providerInput.actions.some(action => action.id === 'view_measurements'))
     assert(equal.resolve(selection(equal)))
   }
 })

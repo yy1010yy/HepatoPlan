@@ -20,7 +20,7 @@ function sendError(res: Response, status: number, code: string, body?: unknown):
   res.status(status).json({ error: code, requestId })
 }
 
-export function createAnalysisApp({ findTumourCount, provider, deadlineMs = 10_000,
+export function createAnalysisApp({ findTumourCount, provider, deadlineMs = 20_000,
   log = entry => console.info(JSON.stringify(entry)) }: Options) {
   const app = express()
   app.disable('x-powered-by')

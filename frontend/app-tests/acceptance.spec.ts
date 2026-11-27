@@ -140,18 +140,12 @@ test('at 390 px a keyboard user can navigate Landing, save two plans, and compar
   await expect(table.getByRole('columnheader', { name: /^B Tilted cut/ })).toBeVisible()
   await activate(page, page.getByRole('button', { name: 'Swap A/B' }))
   await expect(table.getByRole('columnheader', { name: /^A Tilted cut/ })).toBeVisible()
-  const toggle = page.getByRole('checkbox', { name: 'Show differences' })
-  await tabTo(page, toggle)
-  await page.keyboard.press('Space')
-  await expect(page.getByRole('list', { name: 'Difference volumes' }).locator('strong').first()).toHaveText(/mL$/)
-  const anatomy = page.getByRole('group', { name: '3D difference model' })
-  await tabTo(page, anatomy)
-  await page.keyboard.press('ArrowRight')
+  await tabTo(page, page.getByRole('button', { name: 'Analyse comparison' }))
   expect(await page.evaluate(() => {
     const table = document.querySelector('.comparison-table')!
     const [, a, b] = [...table.querySelectorAll('thead th')].map(node => node.getBoundingClientRect())
-    const model = document.querySelector('.differences')!.getBoundingClientRect()
-    return document.body.scrollWidth === 390 && a.right === b.left && model.top >= table.getBoundingClientRect().bottom
+    return document.body.scrollWidth === 390 && a.right === b.left
+      && getComputedStyle(table.closest('.compare-results')!).overflowY === 'visible'
   })).toBe(true)
   await activate(page, page.getByRole('button', { name: 'Back to planning' }))
   await expect(angle).toHaveValue('-1')

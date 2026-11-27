@@ -650,6 +650,20 @@ test('resection scene keeps case geometry in world space and clips opposite half
   const negativePlane = negative.material.clippingPlanes![0]
   assert.equal(positivePlane.constant, -0.5)
   assert.equal(negativePlane.constant, 0.5)
+  const workingCut = readyState(controller)
+  view.camera.position.add(new Vector3(5, 6, 7))
+  view.camera.lookAt(view.target)
+  view.camera.zoom = 1.25
+  const camera = { position: view.camera.position.toArray(), orientation: view.camera.quaternion.toArray(), zoom: view.camera.zoom }
+  const previewPlane = { ...workingCut.plane, pointMm: [1.5, 0, 0] as const }
+  assert.equal(view.update(workingCut, previewPlane), false)
+  assert.equal(positivePlane.constant, -1.5)
+  assert.equal(view.update(workingCut), false)
+  assert.equal(positivePlane.constant, -0.5)
+  assert.deepEqual({
+    position: view.camera.position.toArray(), orientation: view.camera.quaternion.toArray(), zoom: view.camera.zoom,
+  }, camera)
+  assert.equal(controller.state, workingCut)
   const engine = new PreparedCase({
     ...readyState(controller).metadata, dimensions: [3, 1, 1], labelCounts: { parenchyma: 2, tumour: 1 },
   }, new Uint8Array([1, 1, 2]))

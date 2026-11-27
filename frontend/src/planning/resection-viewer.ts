@@ -111,6 +111,7 @@ export function createResectionScene(aspect = 1) {
   let showComparison = false
   let showOverlay = true
   let revision: number | undefined
+  let displayedPlane: ResectionPlane | undefined
 
   function clearCase() {
     anatomy.clear()
@@ -120,6 +121,7 @@ export function createResectionScene(aspect = 1) {
     positiveMesh = negativeMesh = undefined
     comparisonPair = undefined
     selectionToken = revision = undefined
+    displayedPlane = undefined
     overlay.visible = false
   }
 
@@ -132,7 +134,7 @@ export function createResectionScene(aspect = 1) {
     overlay.visible = showOverlay && !comparing && selectionToken !== undefined
   }
 
-  function update(state: CaseState): boolean {
+  function update(state: CaseState, previewPlane?: ResectionPlane): boolean {
     if (state.status !== 'ready') {
       if (selectionToken !== undefined) clearCase()
       return false
@@ -165,8 +167,9 @@ export function createResectionScene(aspect = 1) {
       selectionToken = state.selectionToken
     }
 
-    if (revision !== state.revision) {
-      const { pointMm, unitNormal, resectSide } = state.plane
+    const displayPlane = previewPlane ?? state.plane
+    if (revision !== state.revision || displayedPlane !== displayPlane) {
+      const { pointMm, unitNormal, resectSide } = displayPlane
       const normal = new Vector3(...unitNormal)
       const point = new Vector3(...pointMm)
       positivePlane.setFromNormalAndCoplanarPoint(normal, point)
@@ -181,6 +184,7 @@ export function createResectionScene(aspect = 1) {
       }
       overlay.scale.set(overlayExtent(localX), overlayExtent(localY), 1)
       revision = state.revision
+      displayedPlane = displayPlane
     }
     const pair = state.comparison.status === 'idle' ? undefined : state.comparison.pair
     if (pair && pair !== comparisonPair) {
@@ -297,10 +301,12 @@ export function mountResectionViewer(container: HTMLElement, controller: Resecti
   container.addEventListener('keydown', cameraKey)
   renderer.domElement.addEventListener('webglcontextlost', contextLost)
   controls.addEventListener('change', requestRender)
-  const unsubscribe = controller.subscribe(state => {
+  let latestState: CaseState | undefined
+  let previewPlane: ResectionPlane | undefined
+  function updateScene(state: CaseState) {
     if (failed) return
     try {
-      if (view.update(state)) {
+      if (view.update(state, previewPlane)) {
         controls.target.copy(view.target)
         controls.update()
         controls.saveState()
@@ -309,23 +315,37 @@ export function mountResectionViewer(container: HTMLElement, controller: Resecti
     } catch (error) {
       fail(error)
     }
+  }
+  const unsubscribe = controller.subscribe(state => {
+    latestState = state
+    if (state.status !== 'ready' || state.offsetSearch?.status !== 'ready'
+        || state.offsetSearch.result.outcome !== 'improvement'
+        || state.offsetSearch.result.alternative.plane !== previewPlane) previewPlane = undefined
+    updateScene(state)
   })
   const observer = new ResizeObserver(() => {
     if (failed) return
     const width = Math.max(1, container.clientWidth)
     const height = Math.max(1, container.clientHeight)
     const aspect = width / height
-    const scale = framingScale(view.camera, aspect) / framingScale(view.camera, view.camera.aspect)
-    view.camera.position.sub(controls.target).multiplyScalar(scale).add(controls.target)
-    view.camera.far *= scale
-    view.camera.aspect = aspect
-    view.camera.updateProjectionMatrix()
+    if (aspect !== view.camera.aspect) {
+      const scale = framingScale(view.camera, aspect) / framingScale(view.camera, view.camera.aspect)
+      view.camera.position.sub(controls.target).multiplyScalar(scale).add(controls.target)
+      view.camera.far *= scale
+      view.camera.aspect = aspect
+      view.camera.updateProjectionMatrix()
+    }
     renderer.setSize(width, height)
     requestRender()
   })
   observer.observe(container)
 
   return {
+    setPreviewPlane(plane?: ResectionPlane) {
+      if (plane === previewPlane) return
+      previewPlane = plane
+      if (latestState) updateScene(latestState)
+    },
     setPlaneVisible(visible: boolean) { view.setPlaneVisible(visible); requestRender() },
     setComparisonVisible(visible: boolean) { if (view.setComparisonVisible(visible)) requestRender() },
     setLiverOpacity(opacity: number) { view.setLiverOpacity(opacity); requestRender() },

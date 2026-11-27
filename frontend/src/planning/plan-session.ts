@@ -1,5 +1,5 @@
 import type { CaseController, CaseState } from './case-controller.ts'
-import { measurementRows } from './measurements-panel.ts'
+import { measurementLabels, measurementRows } from './measurements-panel.ts'
 import type { ResectionPlane } from './plane.ts'
 import type { Vec3 } from './case-contract.ts'
 import type { OffsetSearchResult, VolumetryResult } from './volumetry.ts'
@@ -21,14 +21,27 @@ export type SavedPlan = PlanDetails & {
 
 export type PlanComparison = {
   readonly plans: ReadonlyArray<SavedPlan>
-  readonly rows: ReadonlyArray<{ label: string; values: readonly string[] }>
+  readonly rows: ReadonlyArray<{ label: string; values: readonly string[]; advantage?: 0 | 1 }>
+}
+
+const volumeMetrics: Readonly<Record<string, (result: VolumetryResult) => number>> = {
+  [measurementLabels.removed]: result => -result.resectedMl,
+  [measurementLabels.remaining]: result => result.remainingMl,
+  [measurementLabels.flr]: result => result.flrPercent,
+  [measurementLabels.resected]: result => -result.resectedPercent,
 }
 
 export function compareSavedPlans(plans: readonly SavedPlan[], locale = 'en'): PlanComparison {
   const columns = plans.map(plan => measurementRows(plan.result, locale, false))
-  const rows = columns[0].map(({ label }, row) => ({
-    label, values: columns.map(column => column[row].value),
-  }))
+  const rows = columns[0].map(({ label }, row) => {
+    const values = columns.map(column => column[row].value)
+    const score = volumeMetrics[label]
+    if (plans.length !== 2 || values[0] === values[1] || !score) return { label, values }
+    const a = score(plans[0].result)
+    const b = score(plans[1].result)
+    const advantage = a === b ? undefined : a > b ? 0 as const : 1 as const
+    return { label, values, advantage }
+  })
   return { plans, rows }
 }
 

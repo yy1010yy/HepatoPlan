@@ -184,8 +184,6 @@ function comparisonEvidence(request: ComparisonAnalysisRequest): Catalogue {
       'differenceVolumes.removedOnlyByAMl', 'differenceVolumes.removedOnlyByBMl')
     result.observations.push(exclusive)
     result.requiredObservationIds.push(exclusive.id)
-    offer(result, 'show_differences', fact('inspect_exclusive_regions', 'Use Show differences to inspect the exclusive regions.',
-      ...exclusive.evidence))
   }
   for (const [label, m] of [['a', a], ['b', b]] as const) {
     const key = `plan${label.toUpperCase()}.measurements`
@@ -196,8 +194,11 @@ function comparisonEvidence(request: ComparisonAnalysisRequest): Catalogue {
       `Open Plan ${label.toUpperCase()} to inspect its plane. It ${contact(m)}.`,
       `${key}.tumourIntersectsPlane`, `${key}.tumourPlaneDistanceMm`))
   }
-  if (!contactChanges && !(delta === 0 && differingRegions)) {
-    offer(result, 'view_measurements', fact('inspect_saved_measurements', 'Review both saved readings in the comparison table.', ...evidence))
+  if (!contactChanges) {
+    offer(result, 'view_measurements', differingRegions
+      ? fact('inspect_exclusive_regions', 'Compare the retained totals in the table together with the exclusive volumes in this analysis.',
+        ...evidence, 'differenceVolumes.removedOnlyByAMl', 'differenceVolumes.removedOnlyByBMl')
+      : fact('inspect_saved_measurements', 'Review both saved readings in the comparison table.', ...evidence))
   }
   return result
 }

@@ -38,7 +38,7 @@ export type AnalysisRequest = SingleAnalysisRequest | ComparisonAnalysisRequest
 export type AnalysisFinding = { text: string; evidence: string[] }
 export type AnalysisLimitation = 'volume_only' | 'geometric_gap_only' | 'tumour_side_unmeasured' | 'spatial_unavailable'
 type SingleAction = 'preview_alternative' | 'inspect_plane' | 'inspect_removal_side' | 'view_measurements'
-type ComparisonAction = 'open_plan_a' | 'open_plan_b' | 'show_differences' | 'view_measurements'
+type ComparisonAction = 'open_plan_a' | 'open_plan_b' | 'view_measurements'
 export type AnalysisAction = SingleAction | ComparisonAction
 type Result<Action> = {
   finding: AnalysisFinding

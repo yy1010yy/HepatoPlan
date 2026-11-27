@@ -4,8 +4,9 @@ import { Button, Status } from './controls.tsx'
 import { planLabel } from './plan-dialogs.tsx'
 import { compareSavedPlans } from '../planning/plan-session.ts'
 import type { SavedPlan } from '../planning/plan-session.ts'
-import { differenceRegions } from '../planning/plan-difference-panel.ts'
 import type { CaseController, CaseState, ComparisonPair } from '../planning/case-controller.ts'
+import { useComparisonAnalysis } from './comparison-analysis.tsx'
+import { differenceRegions } from '../planning/plan-difference-panel.ts'
 import { volumeFormatter } from '../planning/measurements-panel.ts'
 import { AnatomyViewer } from './anatomy-viewer.tsx'
 
@@ -66,6 +67,7 @@ export function CompareView({ titleRef, plans, pair, onPair, state, controller, 
   const [showDifferences, setShowDifferences] = useState(false)
   const ready = state.status === 'ready'
   const { rows } = compareSavedPlans(pair)
+  const analysis = useComparisonAnalysis({ state, controller, pair, onOpen })
   useEffect(() => {
     if (ready && showDifferences) controller?.selectComparison(...pair)
   }, [controller, pair, ready, showDifferences])
@@ -108,13 +110,15 @@ export function CompareView({ titleRef, plans, pair, onPair, state, controller, 
           </div>
           <label className="show-plane">
             <input type="checkbox" checked={showDifferences} onChange={event => {
-              if (event.currentTarget.checked) controller?.selectComparison(...pair)
-              else controller?.hideComparisonOverlay()
-              setShowDifferences(event.currentTarget.checked)
+              const checked = event.currentTarget.checked
+              if (!checked) controller?.hideComparisonOverlay()
+              setShowDifferences(checked)
             }} /> Show differences
           </label>
+          {analysis.trigger}
         </section>
-        <section className="panel compare-results" aria-labelledby="comparison-table-title">
+        {showDifferences && <SpatialDifferences state={state} controller={controller} pair={pair} />}
+        <section className="panel compare-results" aria-labelledby="comparison-table-title" tabIndex={0}>
           <h2 id="comparison-table-title">Saved measurements</h2>
           <table className="comparison-table" aria-labelledby="comparison-table-title">
             <colgroup><col className="measurement-col" /><col /><col /></colgroup>
@@ -130,13 +134,18 @@ export function CompareView({ titleRef, plans, pair, onPair, state, controller, 
               {rows.map(row => (
                 <tr key={row.label}>
                   <th scope="row">{row.label}</th>
-                  {pair.map((plan, index) => <td key={plan.id}>{row.values[index]}</td>)}
+                  {pair.map((plan, index) => {
+                    const value = row.values[index]
+                    const advantage = row.advantage === index
+                    return <td key={plan.id} className={advantage ? 'comparison-advantage' : undefined}
+                      aria-label={advantage ? value + ', more parenchyma preserved' : undefined}>{value}</td>
+                  })}
                 </tr>
               ))}
             </tbody>
           </table>
+          {analysis.result}
         </section>
-        {showDifferences && <SpatialDifferences state={state} controller={controller} pair={pair} />}
       </div>
     </section>
   )
