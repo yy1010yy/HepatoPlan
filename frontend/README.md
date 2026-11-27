@@ -46,6 +46,8 @@ npm.cmd run preview -- --base=/demo/
 
 Open the printed URL under `/demo/`. Plan uses a URL fragment, so the host can serve the emitted files with standard static routing. Only the root `public/` tree is copied into the application artifact. Vite preview serves `cases/index.json` with `Cache-Control: no-cache` and each prepared versioned release file with `Cache-Control: public, max-age=31536000, immutable`. Apply the same [release cache policy](../backend/README.md#publish-a-complete-case-release) when configuring another static host.
 
+For local Plan and Compare analysis requests, the Vite dev and preview servers proxy origin-root `/api/` to the loopback Express server. Start the API separately when exercising those routes. [Local API setup and verification](../backend/README.md#run-the-local-analysis-api)
+
 ## Verify the production entry
 
 ```powershell

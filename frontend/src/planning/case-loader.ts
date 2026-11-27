@@ -28,8 +28,8 @@ export class CaseLoadError extends Error {
 }
 
 const ajv = new Ajv()
-const validateIndex = ajv.compile<CaseIndex>(indexSchema)
-const validateMetadata = ajv.compile<CaseMetadata>(metadataSchema)
+export const validateCaseIndex = ajv.compile<CaseIndex>(indexSchema)
+export const validateCaseMetadata = ajv.compile<CaseMetadata>(metadataSchema)
 
 async function fetchAsset(url: URL, options: RequestInit): Promise<Response> {
   const response = await fetch(url, options)
@@ -46,7 +46,7 @@ export async function loadCaseIndex(indexUrl: URL, signal?: AbortSignal): Promis
     const response = await fetchAsset(indexUrl, { cache: 'no-cache', signal })
     const index: unknown = await response.json()
     signal?.throwIfAborted()
-    if (!validateIndex(index)) throw new Error(ajv.errorsText(validateIndex.errors))
+    if (!validateCaseIndex(index)) throw new Error(ajv.errorsText(validateCaseIndex.errors))
     return { index, indexUrl: response.url || indexUrl.href }
   } catch (error) {
     signal?.throwIfAborted()
@@ -76,8 +76,8 @@ export async function loadCaseBundle(
     const response = await fetchAsset(new URL('metadata.json', caseUrl), { signal })
     const metadata: unknown = await response.json()
     signal?.throwIfAborted()
-    if (!validateMetadata(metadata)) {
-      throw new Error(`Invalid metadata: ${ajv.errorsText(validateMetadata.errors)}`)
+    if (!validateCaseMetadata(metadata)) {
+      throw new Error(`Invalid metadata: ${ajv.errorsText(validateCaseMetadata.errors)}`)
     }
     if (metadata.caseId !== caseId || metadata.releaseId !== releaseId) {
       throw new Error('Metadata case or release ID differs from the index.')

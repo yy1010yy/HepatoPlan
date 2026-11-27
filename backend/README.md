@@ -20,6 +20,46 @@ npm.cmd test
 
 On macOS or Linux, use `.venv/bin/python`, `npm` and `npx`.
 
+## Run the local analysis API
+
+Use Node.js 24.12 or newer. Install the two packages from the repository root, then start the API in its own terminal.
+
+```powershell
+npm.cmd --prefix frontend ci
+npm.cmd --prefix api ci
+npm.cmd --prefix api start
+```
+
+The API listens at `127.0.0.1:4191`. Its start command loads the repository-root `.env` if present. Use `.env.example` as the template and set `GEMINI_API_KEY` in the local `.env` when you are ready for a live check. `GEMINI_MODEL` defaults to `gemini-3.1-flash-lite`. An empty key leaves the API available for validation and returns HTTP 503 for a valid analysis request. A custom `HEPATOPLAN_API_PORT` must be supplied to both the API and Vite processes.
+
+Start the frontend in a second terminal. Both development and preview proxy origin-root `/api/` to the local API.
+
+```powershell
+npm.cmd --prefix frontend run dev -- --host 127.0.0.1
+```
+
+For the built preview, use the same base for building and serving.
+
+```powershell
+npm.cmd --prefix frontend run build -- --base=/demo/
+npm.cmd --prefix frontend run preview -- --base=/demo/ --host 127.0.0.1
+```
+
+Run the HTTP and proxy checks without credentials. They exercise the routes with a simulated provider, including success, invalid input, quota, missing key, invalid replies and timeout.
+
+```powershell
+npm.cmd --prefix api run typecheck
+npm.cmd --prefix api test
+npm.cmd --prefix api run test:proxy
+```
+
+After adding a Gemini key and starting the API, run the live smoke command against either Vite URL below. The command measures the published demo case locally and sends one request to each analysis route. It validates the responses and prints each recommended action. This command also provides an API check before testing the full UI in FT-22.
+
+```powershell
+npm.cmd --prefix api run smoke -- http://127.0.0.1:5173/
+npm.cmd --prefix api run smoke -- http://127.0.0.1:4173/demo/
+```
+
 ## Static preview
 
 Serve the public directory from `tools/` and open `http://127.0.0.1:8000/cases/index.json`.
