@@ -75,6 +75,7 @@ function App() {
         ) : workspace ? (
           <Workspace titleRef={title} state={planning.state} controller={planning.controller} status={planning.caseStatus}
             planCount={flow.plans.length} dirty={flow.dirty} baseline={flow.baseline} savedName={flow.savedName}
+            context={flow.context} onContextChange={flow.setContext}
             onSave={event => flow.setSaveOpener(event.currentTarget)} onCompare={canCompare ? () => flow.goCompare(true) : undefined}
             onRetry={planning.retryCase} onRetryMeasurement={planning.retryMeasurement}
             onChoose={event => flow.setCaseOpener(event.currentTarget)} />

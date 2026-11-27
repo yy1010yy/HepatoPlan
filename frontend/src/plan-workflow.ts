@@ -5,6 +5,7 @@ import type { CaseState, ComparisonPair } from './planning/case-controller.ts'
 import { defaultPlane } from './planning/plane-controls.ts'
 import type { ResectionPlane } from './planning/plane.ts'
 import type { PlanDetails, SavedPlan } from './planning/plan-session.ts'
+import { planContextFor, planContextValues } from './plan-context.ts'
 
 type View = 'landing' | 'plan' | 'compare'
 type Destination =
@@ -33,6 +34,7 @@ export function continuationLabel(destination: Destination) {
 export function usePlanWorkflow(planning: ReturnType<typeof usePreparedCases>, demoId: string) {
   const [view, setView] = useState<View>(() => viewFor(location.hash) === 'landing' ? 'landing' : 'plan')
   const [baseline, setBaseline] = useState<SavedPlan>()
+  const [context, setContext] = useState(() => planContextFor())
   const [lastSave, setLastSave] = useState<SavedPlan>()
   const [selection, setSelection] = useState<{ pair: ComparisonPair; plans: readonly SavedPlan[] }>()
   const [caseOpener, setCaseOpener] = useState<HTMLElement | null>(null)
@@ -83,6 +85,7 @@ export function usePlanWorkflow(planning: ReturnType<typeof usePreparedCases>, d
       case 'case':
         if (destination.caseId !== planning.activeId) {
           setBaseline(undefined)
+          setContext(planContextFor())
           setLastSave(undefined)
           setSelection(undefined)
           lastReady.current = null
@@ -93,12 +96,16 @@ export function usePlanWorkflow(planning: ReturnType<typeof usePreparedCases>, d
       case 'open': {
         const opened = session?.open(destination.planId)
         setBaseline(opened)
+        setContext(planContextFor(opened))
         setLastSave(undefined)
         navigate('plan')
         break
       }
       case 'leave':
-        if (discard && initialPlane) controller?.restorePlane(initialPlane)
+        if (discard && initialPlane) {
+          controller?.restorePlane(initialPlane)
+          setContext(planContextFor(baseline))
+        }
         navigate('landing', destination.hash, destination.fromHistory)
         break
     }
@@ -110,9 +117,9 @@ export function usePlanWorkflow(planning: ReturnType<typeof usePreparedCases>, d
     } else perform(destination)
   }
 
-  function save(details: PlanDetails) {
+  function save(details: Pick<PlanDetails, 'name' | 'notes'>) {
     if (!session) return
-    const plan = session.save(details)
+    const plan = session.save({ ...details, ...planContextValues(context) })
     setBaseline(plan)
     setLastSave(plan)
     if (pending) perform(pending.destination)
@@ -150,7 +157,7 @@ export function usePlanWorkflow(planning: ReturnType<typeof usePreparedCases>, d
   }
 
   return {
-    view, plans, selection, baseline, dirty, canSave, pending, caseOpener, uploadOpener, savedOpener, saveOpener,
+    view, plans, selection, baseline, context, setContext, dirty, canSave, pending, caseOpener, uploadOpener, savedOpener, saveOpener,
     savedName: !dirty && lastSave === baseline ? lastSave?.name : undefined,
     setCaseOpener, setUploadOpener, setSavedOpener, setSaveOpener, setPending,
     save, goCompare, explore, request,

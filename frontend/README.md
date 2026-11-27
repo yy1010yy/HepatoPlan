@@ -13,7 +13,9 @@ Open the local URL printed by Vite. The landing preview rotates the prepared dem
 
 **Try a CT upload** previews the local file picker and opens the prepared demo. The app displays the filename only while the dialog is open. Plan provides geometric presets, live plane and display controls, and measurements for the current cut.
 
-When the current measurements are ready, **Save plan** records a named snapshot. Use **Saved plans** to reopen a cut from the current case and release. Plans stay in the browser tab until you refresh or close it. The app prompts before replacing or leaving an edited working cut.
+The FLR indicator uses three research display bands. Blue represents 30% or more, yellow represents 20% to under 30%, and red represents under 20%. Both readings use the same percentage-based colour. The bands are based on published liver-volume references. The app measures geometric remnant volume, and assessing liver function requires separate clinical information. [CIRSE practice standards](https://pmc.ncbi.nlm.nih.gov/articles/PMC11303578/), [Prospective remnant-volume study](https://pubmed.ncbi.nlm.nih.gov/17551779/)
+
+Enter an optional procedure type and reason under **Plan context** in the left sidebar. Each field has an **Other** option for custom text. When the current measurements are ready, **Save plan** records the cut and its context with the name and notes from the dialog. Use **Saved plans** to reopen a cut from the current case and release. Plans stay in the browser tab until you refresh or close it. The app prompts before replacing or leaving an edited working cut.
 
 With two snapshots, **Compare** opens the saved measurements side by side. Choose distinct plans, swap A and B, or open either cut in Plan. **Back to planning** returns to the working cut. Turn on **Show differences** to calculate and display the four spatial regions for the selected pair.
 

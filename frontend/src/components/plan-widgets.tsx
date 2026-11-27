@@ -4,8 +4,10 @@ import { Button, LabelledRange, MetricRow, Status } from './controls.tsx'
 import type { CaseController, CaseState } from '../planning/case-controller.ts'
 import { PLANE_PRESETS, planeReadouts, presetPlane } from '../planning/plane-controls.ts'
 import type { PlanePreset } from '../planning/plane-controls.ts'
-import { measurementLabels } from '../planning/measurements-panel.ts'
+import { flrBenchmark, measurementLabels } from '../planning/measurements-panel.ts'
 import type { MeasurementPanel } from '../planning/measurements-panel.ts'
+import { customContextOption, planContextOptions } from '../plan-context.ts'
+import type { PlanContext } from '../plan-context.ts'
 
 type Editing = { state: CaseState; controller?: CaseController }
 
@@ -26,8 +28,10 @@ export function Presets({ state, controller }: Editing) {
   )
 }
 
-export function PlaneControls({ state, controller, planeVisible, liverOpacity, onVisibility, onOpacity }: Editing & {
+export function PlaneControls({ state, controller, planeVisible, liverOpacity, onVisibility, onOpacity,
+  context, onContextChange }: Editing & {
   planeVisible: boolean; liverOpacity: number; onVisibility: (value: boolean) => void; onOpacity: (value: number) => void
+  context: PlanContext; onContextChange: (context: PlanContext) => void
 }) {
   const ready = state.status === 'ready'
   const plane = ready ? planeReadouts(state.liver.bounds, state.plane) : undefined
@@ -54,6 +58,35 @@ export function PlaneControls({ state, controller, planeVisible, liverOpacity, o
           value={liverOpacity} readout={`${liverOpacity}%`} aria-valuetext={`${liverOpacity}%`}
           onChange={event => onOpacity(event.currentTarget.valueAsNumber)} />
       </fieldset>
+      <fieldset className="display-controls plan-context" disabled={!ready}>
+        <legend>Plan context</legend>
+        {(['procedureType', 'reason'] as const).map(key => {
+          const { label, placeholder, groups } = planContextOptions[key]
+          const field = context[key]
+          function update(value: Partial<typeof field>) {
+            onContextChange({ ...context, [key]: { ...field, ...value } })
+          }
+          return (
+            <div className="plan-context-field" key={key}>
+              <label>{label} (optional)
+                <select value={field.selected} onChange={event => update({ selected: event.currentTarget.value })}>
+                  <option value="">{placeholder}</option>
+                  {groups.map(group => {
+                    const options = group.options.map(option => <option key={option}>{option}</option>)
+                    return group.label ? <optgroup key={group.label} label={group.label}>{options}</optgroup> : options
+                  })}
+                  <option value={customContextOption}>Other</option>
+                </select>
+              </label>
+              {field.selected === customContextOption && (
+                <label>Other {label.toLowerCase()}
+                  <input value={field.custom} onChange={event => update({ custom: event.currentTarget.value })} />
+                </label>
+              )}
+            </div>
+          )
+        })}
+      </fieldset>
     </section>
   )
 }
@@ -61,8 +94,9 @@ export function PlaneControls({ state, controller, planeVisible, liverOpacity, o
 export function PrimaryMeasurements({ panel }: { panel: MeasurementPanel }) {
   const remaining = panel.status === 'ready' ? panel.rows.find(row => row.label === measurementLabels.remaining)?.value : undefined
   const flr = panel.status === 'ready' ? panel.rows.find(row => row.label === measurementLabels.flr)?.value : undefined
+  const benchmark = panel.status === 'ready' ? flrBenchmark(panel.result.flrPercent) : undefined
   return (
-    <section className="panel readings-primary" aria-labelledby="readings-title">
+    <section className="panel readings-primary" aria-labelledby="readings-title" data-flr-band={benchmark?.band}>
       <h2 id="readings-title">Measurements</h2>
       <dl className="metrics">
         <MetricRow id="remaining" label={measurementLabels.remaining} value={remaining ?? '—'} />
@@ -71,6 +105,12 @@ export function PrimaryMeasurements({ panel }: { panel: MeasurementPanel }) {
       <div className="flr-track">
         {panel.status === 'ready' && <meter id="flr-bar" aria-label={measurementLabels.flr}
           min={0} max={100} value={panel.result.flrPercent} />}
+      </div>
+      <div className="flr-guidance">
+        <p role="status" id="flr-benchmark">
+          {benchmark && <><strong>{benchmark.label}</strong> · {benchmark.message}</>}
+        </p>
+        <p className="flr-context">Volume-based benchmark for research only.</p>
       </div>
     </section>
   )

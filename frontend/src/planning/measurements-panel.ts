@@ -42,6 +42,21 @@ export const measurementLabels = {
   distance: 'Tumour-to-plane distance (geometric estimate)',
 }
 
+const lowerFlrReference = 20
+const upperFlrReference = 30
+
+export function flrBenchmark(flrPercent: number) {
+  if (flrPercent < lowerFlrReference) {
+    return { band: 'below', label: 'Below reference',
+      message: `FLR is below ${lowerFlrReference}%. Low FLR is linked to post-hepatectomy liver failure (PHLF).` }
+  }
+  if (flrPercent < upperFlrReference) {
+    return { band: 'borderline', label: 'Borderline',
+      message: `FLR is within the ${lowerFlrReference}–${upperFlrReference}% reference range.` }
+  }
+  return { band: 'meets', label: 'Meets reference', message: `FLR meets the ${upperFlrReference}% healthy-liver volume benchmark.` }
+}
+
 export function measurementRows(result: VolumetryResult, locale = 'en', includeTotal = true) {
   const volume = volumeFormatter(locale)
   const other = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 })

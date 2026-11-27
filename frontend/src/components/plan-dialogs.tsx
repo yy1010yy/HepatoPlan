@@ -33,7 +33,7 @@ export function PlanDetailsList({ details }: { details: PlanDetails }) {
 }
 
 export function SavePlanDialog({ opener, fallback, onCancel, onSave, canSave, previous, continuation }: DialogProps & {
-  onSave: (details: PlanDetails) => void
+  onSave: (details: Pick<PlanDetails, 'name' | 'notes'>) => void
   canSave: boolean
   previous?: SavedPlan
   continuation?: string
@@ -51,17 +51,12 @@ export function SavePlanDialog({ opener, fallback, onCancel, onSave, canSave, pr
         const form = new FormData(event.currentTarget)
         const value = (name: string) => String(form.get(name) ?? '').trim()
         try {
-          onSave({
-            name: value('name'), procedureType: value('procedureType') || undefined,
-            reason: value('reason') || undefined, notes: value('notes') || undefined,
-          })
+          onSave({ name: value('name'), notes: value('notes') || undefined })
         } catch (problem) {
           setError(problem instanceof Error ? problem.message : 'Cannot save this plan.')
         }
       }}>
         <label>Plan name<input ref={initialFocus} name="name" required defaultValue={previous?.name} /></label>
-        <label>Procedure type (optional)<input name="procedureType" defaultValue={previous?.procedureType} /></label>
-        <label>Reason (optional)<input name="reason" defaultValue={previous?.reason} /></label>
         <label>Notes (optional)<textarea name="notes" rows={3} defaultValue={previous?.notes} /></label>
         <Status id="save-error" hidden={!error}>{error}</Status>
         <div className="actions dialog-actions">

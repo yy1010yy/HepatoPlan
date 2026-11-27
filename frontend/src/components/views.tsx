@@ -13,6 +13,7 @@ import { MeasurementDetails, PlaneControls, Presets, PrimaryMeasurements } from 
 import { measurementPanel } from '../planning/measurements-panel.ts'
 import { PlanDetailsList } from './plan-dialogs.tsx'
 import type { SavedPlan } from '../planning/plan-session.ts'
+import type { PlanContext } from '../plan-context.ts'
 
 type CaseActions = {
   status: LoadStatus
@@ -92,13 +93,15 @@ function meshBox({ bounds }: DecodedMesh) {
 }
 
 export function Workspace({ titleRef, state, controller, planCount, dirty, baseline, savedName,
-  onSave, onCompare, onRetryMeasurement, ...caseActions }: CaseActions & {
+  context, onContextChange, onSave, onCompare, onRetryMeasurement, ...caseActions }: CaseActions & {
   titleRef: Ref<HTMLHeadingElement>
   state: CaseState
   controller?: CaseController
   planCount: number
   dirty: boolean
   baseline?: SavedPlan
+  context: PlanContext
+  onContextChange: (context: PlanContext) => void
   savedName?: string
   onSave: MouseEventHandler<HTMLButtonElement>
   onCompare?: () => void
@@ -128,7 +131,7 @@ export function Workspace({ titleRef, state, controller, planCount, dirty, basel
         <div>
           <h1 id="workspace-title" tabIndex={-1} ref={titleRef}>3D resection planning workspace</h1>
           <p className="working-cut">{baseline?.name || 'Working cut'}{dirty && <span className="pill">Unsaved changes</span>}</p>
-          {baseline && <PlanDetailsList details={baseline} />}
+          {baseline?.notes && <PlanDetailsList details={{ name: baseline.name, notes: baseline.notes }} />}
           {planCount < 2 && (
             <Status id="compare-status">{planCount === 1 ? 'Save one more plan to compare.' : 'Save two plans to compare.'}</Status>
           )}
@@ -155,7 +158,7 @@ export function Workspace({ titleRef, state, controller, planCount, dirty, basel
             <PrimaryMeasurements panel={panel} />
           </div>
           <PlaneControls state={state} controller={controller} planeVisible={planeVisible} liverOpacity={liverOpacity}
-            onVisibility={setPlaneVisible} onOpacity={setLiverOpacity} />
+            onVisibility={setPlaneVisible} onOpacity={setLiverOpacity} context={context} onContextChange={onContextChange} />
         </div>
         <MeasurementDetails state={state} panel={panel} onRetry={onRetryMeasurement} onSave={onSave}
           onCompare={onCompare} savedName={savedName} />
