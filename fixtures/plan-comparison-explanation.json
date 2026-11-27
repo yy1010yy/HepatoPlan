@@ -1,0 +1,43 @@
+{
+  "request": {
+    "releaseId": "demo-1",
+    "caseId": "case-002",
+    "planAId": "plan-1",
+    "planBId": "plan-2",
+    "planA": {
+      "totalParenchymaMl": 100,
+      "resectedMl": 40,
+      "remainingMl": 60,
+      "flrPercent": 60,
+      "resectedPercent": 40,
+      "tumourIntersectsPlane": false,
+      "tumourPlaneDistanceMm": 4.25,
+      "caseId": "case-002",
+      "releaseId": "demo-1"
+    },
+    "planB": {
+      "totalParenchymaMl": 100,
+      "resectedMl": 30,
+      "remainingMl": 70,
+      "flrPercent": 70,
+      "resectedPercent": 30,
+      "tumourIntersectsPlane": true,
+      "tumourPlaneDistanceMm": 0,
+      "caseId": "case-002",
+      "releaseId": "demo-1"
+    },
+    "differenceVolumes": {
+      "removedOnlyByAMl": 20,
+      "removedOnlyByBMl": 10,
+      "removedByBothMl": 20,
+      "retainedByBothMl": 50
+    }
+  },
+  "response": {
+    "releaseId": "demo-1",
+    "caseId": "case-002",
+    "planAId": "plan-1",
+    "planBId": "plan-2",
+    "explanation": "Plan B retains 10 mL more parenchyma than Plan A. The tumour intersects Plan B's plane."
+  }
+}

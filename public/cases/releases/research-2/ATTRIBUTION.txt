@@ -1,0 +1,15 @@
+HepatoPlan derived case assets
+
+Source dataset: Medical Segmentation Decathlon, Task03 Liver.
+Dataset: https://registry.opendata.aws/msd/
+Citation: Antonelli, M., Reinke, A., Bakas, S. et al. The Medical Segmentation
+Decathlon. Nature Communications 13, 4128 (2022).
+https://doi.org/10.1038/s41467-022-30695-9
+
+Source and derived dataset assets: CC BY-SA 4.0.
+https://creativecommons.org/licenses/by-sa/4.0/
+
+HepatoPlan cropped the original segmentation labels, exported them as raw
+unsigned bytes, converted the spatial metadata to millimetres, and generated
+binary STL meshes of the liver envelope and tumour. Source CTs, NIfTI headers,
+and the local case mapping are excluded from this release.

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "releaseId": "research-2",
+  "caseId": "case-003",
+  "dimensions": [
+    306,
+    259,
+    59
+  ],
+  "voxelSpacingMm": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "voxelToWorldMm": [
+    [
+      1.0,
+      0.0,
+      0.0,
+      129.0
+    ],
+    [
+      0.0,
+      1.0,
+      0.0,
+      104.0
+    ],
+    [
+      0.0,
+      0.0,
+      1.0,
+      12.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "labelCounts": {
+    "parenchyma": 1216025,
+    "tumour": 4539
+  }
+}

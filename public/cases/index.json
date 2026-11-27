@@ -1,5 +1,15 @@
 {
   "schemaVersion": 1,
-  "releaseId": "development",
-  "cases": []
+  "releaseId": "research-2",
+  "cases": [
+    {
+      "caseId": "case-001"
+    },
+    {
+      "caseId": "case-002"
+    },
+    {
+      "caseId": "case-003"
+    }
+  ]
 }

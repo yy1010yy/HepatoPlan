@@ -1,31 +1,38 @@
-# HepatoPlan backend
+# HepatoPlan tools and browser engine
 
-Use Python 3.12 or newer and Node.js 24.12 or newer. Run setup and checks from `backend/`. The Windows commands below use a project-local virtual environment.
+Run the offline Python commands from `tools/` and the Node commands from `frontend/`. Use Python 3.12+ and Node.js 24.12+. The commands below use Windows PowerShell.
+
+From `tools/`:
 
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-npm ci
 .\.venv\Scripts\python.exe -m unittest discover -s tests
-npm run typecheck
-npm test
 ```
 
-Use the path to a Python 3.12 executable directly for the first command if your installation uses a different launcher. On macOS or Linux use `python3.12 -m venv .venv` and replace the Windows virtual-environment executable with `.venv/bin/python`.
+From `frontend/`:
+
+```powershell
+npm.cmd ci
+npm.cmd run typecheck
+npm.cmd test
+```
+
+On macOS or Linux, use `.venv/bin/python`, `npm` and `npx`.
 
 ## Static preview
 
-Serve the public directory from `backend/` and open `http://127.0.0.1:8000/cases/index.json`.
+Serve the public directory from `tools/` and open `http://127.0.0.1:8000/cases/index.json`.
 
 ```powershell
 .\.venv\Scripts\python.exe -m preprocessing.static_preview --port 8000
 ```
 
-The development index starts with an empty case list. The format fixtures live under `backend/fixtures/` and exercise the JSON contract using synthetic metadata.
+The format fixtures live under `fixtures/` and exercise the JSON contract using synthetic metadata.
 
 ## Version 1 case contract
 
-The two JSON Schemas under `contracts/` define the index and case metadata. Python and TypeScript tests read the same sample files. TypeScript consumers can import `CaseIndex` and `CaseMetadata` from `src/case-contract.ts`.
+The two JSON Schemas under `contracts/` define the index and case metadata. Python and TypeScript tests read the same sample files. TypeScript consumers can import `CaseIndex` and `CaseMetadata` from `frontend/src/planning/case-contract.ts`.
 
 - The public index is `public/cases/index.json`. Resolve each case's `releases/<releaseId>/<caseId>/` path relative to the index URL. Each case has `metadata.json`, `labels.bin`, `liver.stl`, and `tumour.stl`. Use lowercase ASCII letters, digits, and hyphens in release and case IDs.
 - `labels.bin` contains exactly `nx * ny * nz` bytes as a headerless unsigned 8-bit array in C order. The byte offset for voxel `(i, j, k)` is `(i * ny + j) * nz + k`. Values are 0 for background, 1 for parenchyma, and 2 for tumour.
@@ -38,32 +45,32 @@ The schemas validate the JSON structure. The exporter and loader tasks in the tr
 
 For a real demo release, use the extracted [Medical Segmentation Decathlon Task03 Liver dataset](https://medicaldecathlon.com/dataaws/) with its `imagesTr/` and `labelsTr/` directories. Keep the dataset and allowlist outside `public/`. One local option is `backend/.local/`, which Git ignores.
 
-Create a local `selection.json` mapping public case IDs to source filename stems, for example `{"case-001": "liver_10"}`. This entry pairs `imagesTr/liver_10.nii.gz` with `labelsTr/liver_10.nii.gz`. Run the check from `backend/`.
+Create a local `selection.json` mapping public case IDs to source filename stems, for example `{"case-001": "liver_10"}`. This entry pairs `imagesTr/liver_10.nii.gz` with `labelsTr/liver_10.nii.gz`. Run the check from `tools/`.
 
 ```powershell
-.\.venv\Scripts\python.exe -m preprocessing.case_selection --dataset-dir .local/Task03_Liver --allowlist .local/selection.json --release-id demo-1 --output-dir ../public/cases
+.\.venv\Scripts\python.exe -m preprocessing.case_selection --dataset-dir ../backend/.local/Task03_Liver --allowlist ../backend/.local/selection.json --release-id demo-1 --output-dir ../public/cases
 ```
 
 The command checks the IDs and whether both files for each entry can be read. It prints public case IDs and leaves the output directory untouched. Synthetic selection tests run with the standard Python test command above.
 
 ## Stage label assets and metadata
 
-Run the label exporter from `backend/` to validate the selected NIfTI pairs and stage their cropped masks and metadata outside `public/`.
+Run the label exporter from `tools/` to validate the selected NIfTI pairs and stage their cropped masks and metadata outside `public/`.
 
 ```powershell
-.\.venv\Scripts\python.exe -m preprocessing.label_export --dataset-dir .local/Task03_Liver --allowlist .local/selection.json --release-id demo-1 --output-dir .local/staging
+.\.venv\Scripts\python.exe -m preprocessing.label_export --dataset-dir ../backend/.local/Task03_Liver --allowlist ../backend/.local/selection.json --release-id demo-1 --output-dir ../backend/.local/staging
 ```
 
-The exporter checks the CT and mask dimensions and converts their affine transforms to millimetres. It requires corresponding corner voxel centres to be within 0.001 mm. If a header omits its spatial unit, supply an override only after verifying the unit for that file. For example, `--unit-overrides .local/verified-units.json` can read `{"case-001":{"ct":"mm","label":"mm"}}`. Include only the fields that need an override. Accepted units are `meter`, `mm`, and `micron`.
+The exporter checks the CT and mask dimensions and converts their affine transforms to millimetres. It requires corresponding corner voxel centres to be within 0.001 mm. If a header omits its spatial unit, supply an override only after verifying the unit for that file. For example, `--unit-overrides ../backend/.local/verified-units.json` can read `{"case-001":{"ct":"mm","label":"mm"}}`. Include only the fields that need an override. Accepted units are `meter`, `mm`, and `micron`.
 
 Look for `labels.bin` and `metadata.json` under `.local/staging/releases/demo-1/<caseId>/`. The command stages all selected cases before making that directory available and refuses to replace an existing staged release.
 
 ## Publish a complete case release
 
-Run the full exporter from `backend/` with the same allowlist and verified units. It rebuilds the label assets directly from the source pairs and adds aligned binary STL meshes. Pass `--unit-overrides` here as well if needed.
+Run the full exporter from `tools/` with the same allowlist and verified units. It rebuilds the label assets directly from the source pairs and adds aligned binary STL meshes. Pass `--unit-overrides` here as well if needed.
 
 ```powershell
-.\.venv\Scripts\python.exe -m preprocessing.release_export --dataset-dir .local/Task03_Liver --allowlist .local/selection.json --release-id demo-1 --output-dir ../public/cases
+.\.venv\Scripts\python.exe -m preprocessing.release_export --dataset-dir ../backend/.local/Task03_Liver --allowlist ../backend/.local/selection.json --release-id demo-1 --output-dir ../public/cases
 ```
 
 Each release includes dataset attribution and licensing information. The exporter stages and verifies every case before moving the release into place and replacing `index.json`. Use a new release ID for each publication. The previous release directory stays available to clients that already loaded its index.
@@ -72,13 +79,13 @@ The local preview serves `cases/index.json` with `Cache-Control: no-cache` and v
 
 ## Evaluate resection geometry
 
-Create a `PreparedCase` from `src/volumetry.ts` with a case's metadata and `Uint8Array` label buffer. It takes a private snapshot once. Call `evaluate(plane)` on the same case whenever the plane changes. A plane has a point in millimetres, a normal, and a removal side, as defined in `src/plane.ts`.
+Create a `PreparedCase` from `frontend/src/planning/volumetry.ts` with a case's metadata and `Uint8Array` label buffer. It takes a private snapshot once. Call `evaluate(plane)` on the same case whenever the plane changes. A plane has a point in millimetres, a normal, and a removal side, as defined in `frontend/src/planning/plane.ts`.
 
-The result contains full-precision volumes in millilitres, percentages, and tumour contact and distance in millimetres. `npm test` exercises the engine with synthetic masks, including oblique cuts and cases where the cut passes between disconnected tumour regions.
+The result contains full-precision volumes in millilitres, percentages, and tumour contact and distance in millimetres. `npm.cmd test` exercises the engine with synthetic masks, including oblique cuts and cases where the cut passes between disconnected tumour regions.
 
 ## Load a case in the browser
 
-Pass the full index URL to `loadCaseIndex`, then pass the returned catalog and a case ID to `loadCaseBundle`. Both functions in `src/case-loader.ts` accept an optional abort signal. A rejected load can be retried by calling the same function again.
+Pass the full index URL to `loadCaseIndex`, then pass the returned catalog and a case ID to `loadCaseBundle`. Both functions in `frontend/src/planning/case-loader.ts` accept an optional abort signal. A rejected load can be retried by calling the same function again.
 
 Pass the bundle's metadata and label buffer to `startVolumetryWorker` with a new selection token. Keep the decoded liver and tumour meshes for rendering. The startup call transfers the label buffer. Wait for `ready` before sending an `evaluate` message, and use the echoed selection token and revision to identify the response. The browser bundler needs to compile the module worker referenced by `startVolumetryWorker`.
 
@@ -88,7 +95,7 @@ Pass the current state to `measurementPanel` for formatted rows and the save fla
 
 ## Wire the resection plane controls
 
-Use `bindPlaneControls` from `src/plane-controls.ts` to connect two native range inputs, their readouts, preset buttons, and the flip and reset buttons to a `CaseController`. Call the returned function when disconnecting the controls. The offset range comes from the loaded liver bounds and the angle range is −45° to +45°.
+Use `bindPlaneControls` from `frontend/src/planning/plane-controls.ts` to connect two native range inputs, their readouts, preset buttons, and the flip and reset buttons to a `CaseController`. Call the returned function when disconnecting the controls. The offset range comes from the loaded liver bounds and the angle range is −45° to +45°.
 
 Framework components can call `setPlaneOffset`, `setPlaneAngle`, `applyPlanePreset`, `flipResectSide`, and `resetPlane` directly and render `planeReadouts` from the current case. The readouts follow that geometry and display rounded values while the worker receives the plane at full precision.
 
@@ -100,18 +107,35 @@ Create one `PlanSession` per controller. Use `save({ name, procedureType, reason
 
 ## Run the synthetic browser checks
 
-From `backend/`, run `npx playwright install chromium` once, then run `npm run test:browser`. On Windows with Chrome already installed, you can set `$env:PLAYWRIGHT_CHANNEL = 'chrome'` before running the suite. Playwright starts a loopback Vite server and runs the test page in headless Chromium with software WebGL.
+From `frontend/`, run `npx.cmd playwright install chromium` once, then run `npm.cmd run test:browser`. On Windows with Chrome already installed, you can set `$env:PLAYWRIGHT_CHANNEL = 'chrome'` before running the suite. Playwright starts a loopback Vite server and runs the test page in headless Chromium with software WebGL.
 
-The browser tests supply synthetic cases over HTTP and exercise the real viewer and worker. The regular `npm test` suite covers delayed case and worker responses, animation-frame scheduling, and calculation retry deterministically. Both suites run independently of the Task03 Liver dataset.
+The browser tests supply synthetic cases over HTTP and exercise the real viewer and worker. The regular `npm.cmd test` suite covers delayed case and worker responses, animation-frame scheduling, and calculation retry deterministically. Both suites run independently of the Task03 Liver dataset.
 
 ## Verify the local research release and demo
 
-Publish the three-case release to `backend/.local/research-public/cases` with the offline exporter. From `backend/`, opt in to the research browser test.
+Publish the three-case release to `backend/.local/research-public/cases` with the offline exporter. From `frontend/`, opt in to the research browser test.
 
 ```powershell
 $env:PLAYWRIGHT_CHANNEL = 'chrome'
 $env:HEPATOPLAN_RESEARCH_TEST = '1'
-npm run test:browser -- research.spec.ts
+npm.cmd run test:browser -- research.spec.ts
 ```
 
-The test loads every case through the selector, runs the demo on `case-002`, and records case load, worker calculation, and input-to-rendered-result timings in `.local/task-6-verification.json`. The report uses 20 slider actions and 10 preset actions for its p95. If the 150 ms target is missed, the test repeats those actions with rendering disabled to help isolate the difference.
+The test loads every case through the selector, runs the demo on `case-002`, and records case load, worker calculation, and input-to-rendered-result timings in `backend/.local/task-6-verification.json`. The report uses 20 slider actions and 10 preset actions for its p95. If the 150 ms target is missed, the test repeats those actions with rendering disabled to help isolate the difference.
+
+Set `HEPATOPLAN_RESEARCH_PUBLIC_DIR` from `frontend/` to override the prepared **public root** containing `cases/index.json`. Both Vite and the research tests use that location. Reports are written under `backend/.local/`.
+
+## Verify the built fixture
+
+From `frontend/`, confirm the prepared release is in the repository's `public/cases/`, then run:
+
+```powershell
+npm.cmd run build:fixture
+$env:PLAYWRIGHT_CHANNEL = 'chrome'
+$env:HEPATOPLAN_RESEARCH_TEST = '1'
+$env:HEPATOPLAN_FIXTURE_BUILD = '1'
+npm.cmd run test:browser -- research.spec.ts
+Remove-Item Env:HEPATOPLAN_RESEARCH_TEST, Env:HEPATOPLAN_FIXTURE_BUILD
+```
+
+Playwright starts Vite preview over HTTP at `/demo/`, serving `frontend/dist/fixture`. The built workflow writes `built-task-6-verification.json` and `built-task-7-comparison-verification.json` under `backend/.local/`.

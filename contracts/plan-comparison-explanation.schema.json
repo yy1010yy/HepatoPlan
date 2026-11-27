@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "releaseId",
+        "caseId",
+        "planAId",
+        "planBId",
+        "planA",
+        "planB"
+      ],
+      "properties": {
+        "releaseId": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "caseId": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "planAId": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "planBId": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "planA": {
+          "$ref": "#/definitions/measurements"
+        },
+        "planB": {
+          "$ref": "#/definitions/measurements"
+        },
+        "differenceVolumes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "removedOnlyByAMl",
+            "removedOnlyByBMl",
+            "removedByBothMl",
+            "retainedByBothMl"
+          ],
+          "properties": {
+            "removedOnlyByAMl": {
+              "type": "number",
+              "minimum": 0
+            },
+            "removedOnlyByBMl": {
+              "type": "number",
+              "minimum": 0
+            },
+            "removedByBothMl": {
+              "type": "number",
+              "minimum": 0
+            },
+            "retainedByBothMl": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "releaseId",
+        "caseId",
+        "planAId",
+        "planBId",
+        "explanation"
+      ],
+      "properties": {
+        "releaseId": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "caseId": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "planAId": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "planBId": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "explanation": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      }
+    },
+    "measurements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totalParenchymaMl",
+        "resectedMl",
+        "remainingMl",
+        "flrPercent",
+        "resectedPercent",
+        "tumourIntersectsPlane",
+        "tumourPlaneDistanceMm",
+        "caseId",
+        "releaseId"
+      ],
+      "properties": {
+        "totalParenchymaMl": {
+          "type": "number",
+          "minimum": 0
+        },
+        "resectedMl": {
+          "type": "number",
+          "minimum": 0
+        },
+        "remainingMl": {
+          "type": "number",
+          "minimum": 0
+        },
+        "flrPercent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "resectedPercent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "tumourIntersectsPlane": {
+          "type": "boolean"
+        },
+        "tumourPlaneDistanceMm": {
+          "type": "number",
+          "minimum": 0
+        },
+        "caseId": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "releaseId": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        }
+      }
+    }
+  }
+}

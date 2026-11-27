@@ -1,0 +1,9 @@
+# Future comparison explanation API
+
+Send JSON to `POST /api/plan-comparisons/explain` on the app origin when the user selects **Explain comparison**. The request carries the ordered A/B snapshot IDs, their common prepared case and release, their full-precision measurements and optional four-region volumes. The field names give units in mL, mm and percent. Include the tumour intersection flag for each snapshot. The optional region volumes are for this exact ordered pair. [Request and response example](../fixtures/plan-comparison-explanation.json)
+
+Validate the body against the request schema and verify that the two snapshot IDs are distinct and both measurements belong to the envelope's case and release. The current client can construct this request from session data. Collect only the explicit fields in the example. Send the measurements needed for the educational explanation to the model provider. Keep credentials on the server. The geometry worker supplies the authoritative measurements, and the explanation describes those values for research and education. [Schema](plan-comparison-explanation.schema.json) · [Validation helpers](../frontend/src/planning/comparison-explanation-contract.ts)
+
+A successful response returns the same case, release and ordered plan IDs with a nonblank explanation. Use HTTP 400 for invalid input, 502 for a provider failure and 504 for a provider timeout. In Compare, associate loading, errors and replies with the active request and pair. Clear stale explanations when the case or pair changes, including swaps and a return to the same pair after another request. Keep the table, visual differences and plan actions usable and offer a retry for the explanation.
+
+The offline tests validate the boundary before frontend development. When this feature ships, exercise the server handler with a stub provider and smoke-test its same-origin route in the deployed app.

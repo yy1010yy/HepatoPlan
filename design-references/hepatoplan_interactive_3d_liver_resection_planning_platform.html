@@ -1,0 +1,1731 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HepatoPlan — See Beyond 2D. Plan with 3D.</title>
+
+  <!-- Fonts: Inter (Clean Clinical UI) & JetBrains Mono (Telemetry & Formulas) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Three.js r128 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            obsidian: {
+              950: '#060910',
+              900: '#090E17',
+              850: '#0D131F',
+              800: '#121A2A',
+              700: '#1B253A',
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    html, body {
+      overflow-x: hidden;
+      background-color: #060910;
+      color: #E2E8F0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Ultra-subtle scientific dot/grid background */
+    .bg-sci-grid {
+      background-size: 48px 48px;
+      background-image:
+        linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+    }
+
+    /* Hairline scientific card */
+    .sci-card {
+      background: linear-gradient(180deg, rgba(14, 20, 32, 0.82) 0%, rgba(9, 14, 23, 0.92) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.11);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+    }
+
+    .sci-card-hover {
+      transition: border-color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
+    }
+    .sci-card-hover:hover {
+      border-color: rgba(125, 211, 252, 0.35);
+      transform: translateY(-2px);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+    }
+
+    /* Subtle corner reticle brackets like medical imaging HUDs */
+    .reticle-frame {
+      position: relative;
+    }
+    .reticle-corner {
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      border-color: rgba(255, 255, 255, 0.28);
+      pointer-events: none;
+    }
+    .reticle-tl { top: 14px; left: 14px; border-top: 1.5px solid; border-left: 1.5px solid; border-top-left-radius: 6px; }
+    .reticle-tr { top: 14px; right: 14px; border-top: 1.5px solid; border-right: 1.5px solid; border-top-right-radius: 6px; }
+    .reticle-bl { bottom: 14px; left: 14px; border-bottom: 1.5px solid; border-left: 1.5px solid; border-bottom-left-radius: 6px; }
+    .reticle-br { bottom: 14px; right: 14px; border-bottom: 1.5px solid; border-right: 1.5px solid; border-bottom-right-radius: 6px; }
+
+    /* Minimalist Range Sliders */
+    input[type="range"].sci-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.14);
+      outline: none;
+    }
+    input[type="range"].sci-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #FFFFFF;
+      border: 2px solid #060910;
+      box-shadow: 0 0 10px rgba(125, 211, 252, 0.7);
+      cursor: pointer;
+      transition: transform 0.15s ease;
+    }
+    input[type="range"].sci-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+
+    /* Sleek iOS-style Monochrome Toggle Switches */
+    .sci-switch {
+      position: relative;
+      display: inline-block;
+      width: 38px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+    .sci-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .sci-switch-track {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background-color: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 999px;
+      transition: background-color 0.2s ease, border-color 0.2s ease;
+    }
+    .sci-switch-track::before {
+      content: "";
+      position: absolute;
+      height: 14px;
+      width: 14px;
+      left: 2px;
+      top: 2px;
+      background-color: #94A3B8;
+      border-radius: 50%;
+      transition: transform 0.2s ease, background-color 0.2s ease;
+    }
+    .sci-switch input:checked + .sci-switch-track {
+      background-color: rgba(56, 189, 248, 0.28);
+      border-color: rgba(125, 211, 252, 0.65);
+    }
+    .sci-switch input:checked + .sci-switch-track::before {
+      transform: translateX(18px);
+      background-color: #FFFFFF;
+    }
+
+    /* Interactive 3D Canvas Cursor */
+    .canvas-interactive {
+      cursor: grab;
+      touch-action: none;
+    }
+    .canvas-interactive:active {
+      cursor: grabbing;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 7px; }
+    ::-webkit-scrollbar-track { background: #060910; }
+    ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #38BDF8; }
+  </style>
+</head>
+<body class="font-sans antialiased selection:bg-sky-400/25 selection:text-white">
+
+  <!-- ===================================================================== -->
+  <!-- SECTION 01 — NAVIGATION                                               -->
+  <!-- ===================================================================== -->
+  <header class="fixed top-0 left-0 right-0 z-50 bg-obsidian-950/80 backdrop-blur-xl border-b border-white/[0.08]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-18 py-3.5">
+        <!-- Brand Logo -->
+        <a href="#home" class="flex items-center gap-3 group">
+          <div class="w-9 h-9 rounded-full bg-white/[0.05] border border-white/15 flex items-center justify-center group-hover:border-sky-300/50 transition-colors">
+            <svg class="w-5 h-5 text-white" viewBox="0 0 32 32" fill="none">
+              <path d="M5 18.5C5 11.5 10.5 7 18.5 7C23.5 7 27.5 9.2 27.5 12.2C27.5 14.8 23.2 16 19.5 17.5C15.5 19.1 12.8 23.5 8.8 24C6.2 24.3 5 21.8 5 18.5Z" stroke="currentColor" stroke-width="1.6" fill="rgba(255,255,255,0.08)"/>
+              <line x1="16.5" y1="5" x2="14.5" y2="27" stroke="#7DD3FC" stroke-width="1.5" stroke-dasharray="2.5 2"/>
+              <circle cx="10.8" cy="14.5" r="2" fill="#FB7185"/>
+            </svg>
+          </div>
+          <span class="font-semibold text-lg tracking-tight text-white">HepatoPlan</span>
+        </a>
+
+        <!-- Desktop Navigation Links -->
+        <nav class="hidden lg:flex items-center gap-8 text-[13px] font-medium text-slate-400">
+          <a href="#home" class="hover:text-white transition-colors">Home</a>
+          <a href="#challenge" class="hover:text-white transition-colors">The Challenge</a>
+          <a href="#solution" class="hover:text-white transition-colors">Our Solution</a>
+          <a href="#technology" class="hover:text-white transition-colors">Technology</a>
+          <a href="#prototype" class="hover:text-white transition-colors">Prototype</a>
+          <a href="#roadmap" class="hover:text-white transition-colors">Roadmap</a>
+        </nav>
+
+        <!-- High-Contrast Pill CTA & Mobile Button -->
+        <div class="flex items-center gap-3">
+          <a href="#prototype" class="hidden sm:inline-flex items-center px-5 py-2 rounded-full text-[13px] font-semibold bg-white text-obsidian-950 hover:bg-sky-100 transition-colors">
+            Explore Prototype
+          </a>
+          <button id="mobileMenuBtn" aria-label="Toggle Menu" class="lg:hidden p-2 rounded-full border border-white/15 text-slate-300 hover:text-white">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M4 12h16M4 17h16"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile Menu -->
+    <div id="mobileMenu" class="hidden lg:hidden border-t border-white/10 bg-obsidian-950/95 backdrop-blur-xl px-6 py-4 space-y-2 text-sm text-slate-300">
+      <a href="#home" class="block py-2 hover:text-white">Home</a>
+      <a href="#challenge" class="block py-2 hover:text-white">The Challenge</a>
+      <a href="#solution" class="block py-2 hover:text-white">Our Solution</a>
+      <a href="#technology" class="block py-2 hover:text-white">Technology</a>
+      <a href="#prototype" class="block py-2 hover:text-white">Prototype</a>
+      <a href="#roadmap" class="block py-2 hover:text-white">Roadmap</a>
+      <a href="#prototype" class="block mt-3 text-center py-2.5 rounded-full bg-white text-obsidian-950 font-semibold">Explore Prototype</a>
+    </div>
+  </header>
+
+  <!-- ===================================================================== -->
+  <!-- SECTION 02 — HERO                                                     -->
+  <!-- ===================================================================== -->
+  <section id="home" class="relative pt-28 pb-20 lg:pt-36 lg:pb-28 bg-obsidian-950 bg-sci-grid overflow-hidden border-b border-white/[0.06]">
+    <!-- Subtle Monochromatic Atmospheric Radial Glow -->
+    <div class="pointer-events-none absolute top-10 right-1/4 w-[620px] h-[620px] rounded-full bg-sky-400/[0.05] blur-[140px]"></div>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+        <!-- Left Typography Column -->
+        <div class="lg:col-span-5 space-y-6">
+          <div class="inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.22em] text-slate-400 pb-2 border-b border-white/15">
+            <span class="w-1.5 h-1.5 rounded-full bg-sky-300"></span>
+            3D Hepatic Planning Platform
+          </div>
+
+          <h1 class="font-bold text-4xl sm:text-5xl lg:text-[56px] leading-[1.06] tracking-tight text-white">
+            See Beyond 2D.<br />
+            Plan with 3D.
+          </h1>
+
+          <p class="text-base sm:text-lg text-slate-400 leading-relaxed max-w-md">
+            Transforming liver CT imaging into interactive 3D surgical planning and volumetric insights. Explore anatomy, adjust resection geometry, and quantify remnant volume in real time.
+          </p>
+
+          <div class="flex flex-wrap items-center gap-3.5 pt-2">
+            <a href="#prototype" class="px-6 py-3 rounded-full text-sm font-semibold bg-white text-obsidian-950 hover:bg-sky-100 transition-all">
+              Explore HepatoPlan
+            </a>
+            <a href="#technology" class="px-6 py-3 rounded-full text-sm font-medium text-white border border-white/25 hover:border-white/60 hover:bg-white/[0.04] transition-all">
+              Discover Our Technology
+            </a>
+          </div>
+        </div>
+
+        <!-- Right Interactive 3D X-Ray Wireframe Liver Viewport -->
+        <div class="lg:col-span-7">
+          <div class="reticle-frame rounded-3xl bg-gradient-to-b from-white/[0.03] to-transparent border border-white/[0.1] h-[420px] sm:h-[490px] overflow-hidden relative">
+            <!-- Corner Brackets -->
+            <span class="reticle-corner reticle-tl"></span>
+            <span class="reticle-corner reticle-tr"></span>
+            <span class="reticle-corner reticle-bl"></span>
+            <span class="reticle-corner reticle-br"></span>
+
+            <!-- Clean Scientific Callout Labels (Non-blocking overlay) -->
+            <div class="pointer-events-none absolute top-7 left-7 z-10 hidden sm:block">
+              <div class="text-[11px] font-mono text-slate-300">Inner branches</div>
+              <div class="text-[10px] font-mono text-slate-500">(portal & hepatic vessels)</div>
+            </div>
+
+            <div class="pointer-events-none absolute top-7 right-7 z-10 px-3 py-1 rounded-full bg-obsidian-950/70 border border-white/15 font-mono text-[10px] text-slate-300 tracking-wider">
+              INTERACTIVE 3D · DRAG TO ORBIT
+            </div>
+
+            <div class="pointer-events-none absolute bottom-7 right-7 z-10 text-right hidden sm:block">
+              <div class="text-[11px] font-mono text-rose-300/90">Target lesion</div>
+              <div class="text-[10px] font-mono text-slate-500">10mm safety margin</div>
+            </div>
+
+            <div class="pointer-events-none absolute bottom-7 left-7 z-10 hidden sm:block">
+              <div class="text-[11px] font-mono text-sky-300">Slicing plane</div>
+              <div class="text-[10px] font-mono text-slate-500">(resection trajectory)</div>
+            </div>
+
+            <!-- Live Three.js Hero Canvas -->
+            <div id="heroCanvasContainer" class="w-full h-full canvas-interactive"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- SECTION 03 — THE CHALLENGE                                            -->
+  <!-- ===================================================================== -->
+  <section id="challenge" class="py-24 bg-obsidian-950 border-b border-white/[0.06]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <!-- Header Row -->
+      <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10">
+        <div>
+          <div class="text-[11px] font-mono uppercase tracking-[0.2em] text-slate-400 mb-2">THE CHALLENGE</div>
+          <h2 class="font-bold text-3xl sm:text-4xl tracking-tight text-white">
+            Complex Anatomy. Critical Decisions.
+          </h2>
+        </div>
+        <span class="self-start sm:self-auto px-3.5 py-1.5 rounded-full border border-white/15 bg-white/[0.03] font-mono text-[11px] text-slate-300">
+          Volumetric Precision
+        </span>
+      </div>
+
+      <!-- Two Hairline-Bordered Dark Cards -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Card 1: From 2D Imaging to 3D Anatomy -->
+        <div class="sci-card sci-card-hover rounded-2xl p-6 sm:p-8 flex flex-col justify-between">
+          <div>
+            <h3 class="font-semibold text-lg text-white mb-6">From 2D Imaging to 3D Anatomy</h3>
+            <!-- Crisp Monochrome + Ice-Cyan SVG: Axial CT Stack -> 3D Wireframe Liver -->
+            <div class="py-2">
+              <svg viewBox="0 0 500 200" class="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
+                <!-- Stacked CT Axial Frames -->
+                <g transform="translate(14, 18)">
+                  <rect x="0" y="0" width="96" height="84" rx="10" fill="#0B111C" stroke="rgba(255,255,255,0.2)" stroke-width="1.2"/>
+                  <ellipse cx="48" cy="42" rx="30" ry="22" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.25)"/>
+
+                  <rect x="20" y="14" width="96" height="84" rx="10" fill="#0D1422" stroke="rgba(255,255,255,0.24)" stroke-width="1.2"/>
+                  <ellipse cx="68" cy="56" rx="31" ry="23" fill="rgba(255,255,255,0.07)" stroke="rgba(255,255,255,0.28)"/>
+
+                  <rect x="40" y="28" width="96" height="84" rx="10" fill="#0E1726" stroke="rgba(255,255,255,0.3)" stroke-width="1.3"/>
+                  <ellipse cx="88" cy="70" rx="32" ry="24" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.35)"/>
+
+                  <!-- Front Active CT Slice -->
+                  <rect x="60" y="42" width="100" height="88" rx="10" fill="#101A2C" stroke="rgba(255,255,255,0.55)" stroke-width="1.5"/>
+                  <ellipse cx="110" cy="86" rx="34" ry="25" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.45)"/>
+                  <path d="M88 84 C95 72, 122 72, 130 86 C120 96, 95 95, 88 84Z" fill="rgba(125,211,252,0.22)" stroke="#7DD3FC" stroke-width="1.2"/>
+                  <circle cx="102" cy="84" r="5" fill="#FB7185"/>
+                </g>
+
+                <!-- Arrow -->
+                <g transform="translate(198, 92)">
+                  <line x1="0" y1="0" x2="48" y2="0" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/>
+                  <path d="M41 -6 L49 0 L41 6" fill="none" stroke="rgba(255,255,255,0.75)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </g>
+
+                <!-- Reconstructed 3D Wireframe Liver -->
+                <g transform="translate(268, 22)">
+                  <path d="M18 96 C16 50, 52 18, 114 20 C162 22, 208 42, 208 62 C208 82, 170 88, 140 104 C108 122, 90 144, 54 144 C30 144, 20 124, 18 96Z" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.78)" stroke-width="1.4"/>
+                  <!-- Mesh Triangulation -->
+                  <g stroke="rgba(255,255,255,0.25)" stroke-width="0.8">
+                    <line x1="54" y1="36" x2="114" y2="20"/>
+                    <line x1="54" y1="36" x2="104" y2="72"/>
+                    <line x1="114" y1="20" x2="104" y2="72"/>
+                    <line x1="114" y1="20" x2="162" y2="36"/>
+                    <line x1="162" y1="36" x2="104" y2="72"/>
+                    <line x1="162" y1="36" x2="152" y2="80"/>
+                    <line x1="208" y1="62" x2="152" y2="80"/>
+                    <line x1="104" y1="72" x2="152" y2="80"/>
+                    <line x1="22" y1="86" x2="104" y2="72"/>
+                    <line x1="22" y1="86" x2="66" y2="116"/>
+                    <line x1="66" y1="116" x2="104" y2="72"/>
+                    <line x1="66" y1="116" x2="124" y2="108"/>
+                    <line x1="104" y1="72" x2="124" y2="108"/>
+                    <line x1="66" y1="116" x2="54" y2="144"/>
+                    <line x1="124" y1="108" x2="54" y2="144"/>
+                  </g>
+                  <!-- Subtle internal lesion -->
+                  <circle cx="66" cy="74" r="10" fill="rgba(251,113,133,0.45)" stroke="#FB7185" stroke-width="1"/>
+                </g>
+              </svg>
+            </div>
+          </div>
+          <p class="mt-4 text-xs font-mono text-slate-400">
+            2D AXIAL SLICES (n=240) → PATIENT-SPECIFIC 3D SURFACE MESH
+          </p>
+        </div>
+
+        <!-- Card 2: Different Resection Plans, Different Outcomes -->
+        <div class="sci-card sci-card-hover rounded-2xl p-6 sm:p-8 flex flex-col justify-between">
+          <div>
+            <h3 class="font-semibold text-lg text-white mb-6">Different Resection Plans, Different Outcomes</h3>
+            <div class="grid grid-cols-2 gap-4 py-2">
+              <!-- Scenario A -->
+              <div class="text-center">
+                <svg viewBox="0 0 210 140" class="w-full h-auto">
+                  <defs>
+                    <linearGradient id="frostedA" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.34"/>
+                      <stop offset="100%" stop-color="#94A3B8" stop-opacity="0.08"/>
+                    </linearGradient>
+                  </defs>
+                  <path d="M22 76 C20 40, 50 18, 102 20 C146 22, 188 38, 188 56 C188 74, 154 80, 128 94 C100 108, 84 124, 52 124 C30 124, 24 104, 22 76Z" fill="url(#frostedA)" stroke="rgba(255,255,255,0.65)" stroke-width="1.3"/>
+                  <!-- Cutting plane line -->
+                  <line x1="114" y1="10" x2="72" y2="132" stroke="#7DD3FC" stroke-width="2"/>
+                  <circle cx="62" cy="60" r="8" fill="rgba(251,113,133,0.75)"/>
+                </svg>
+                <div class="mt-2 font-mono text-xs text-white">Plan A · Standard Cut</div>
+                <div class="font-mono text-[11px] text-sky-300 mt-0.5">Remnant FLR: 44.2%</div>
+              </div>
+
+              <!-- Scenario B -->
+              <div class="text-center">
+                <svg viewBox="0 0 210 140" class="w-full h-auto">
+                  <!-- Separated Left & Right Pieces -->
+                  <g transform="translate(-5, 0)">
+                    <path d="M22 76 C20 40, 50 18, 108 20 L84 114 C56 126, 24 110, 22 76Z" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.45)" stroke-width="1.2"/>
+                    <circle cx="62" cy="60" r="8" fill="rgba(251,113,133,0.75)"/>
+                  </g>
+                  <g transform="translate(8, 2)">
+                    <path d="M112 20 C152 24, 188 38, 188 56 C188 74, 154 80, 128 94 C114 102, 100 110, 88 114 Z" fill="rgba(125,211,252,0.22)" stroke="#7DD3FC" stroke-width="1.4"/>
+                  </g>
+                  <line x1="118" y1="10" x2="86" y2="130" stroke="rgba(255,255,255,0.7)" stroke-width="1.5" stroke-dasharray="4 3"/>
+                </svg>
+                <div class="mt-2 font-mono text-xs text-white">Plan B · Extended Cut</div>
+                <div class="font-mono text-[11px] text-rose-300 mt-0.5">Remnant FLR: 21.5%</div>
+              </div>
+            </div>
+          </div>
+          <p class="mt-4 text-xs font-mono text-slate-400">
+            MILLIMETER PLANE SHIFTS DIRECTLY IMPACT POST-OPERATIVE SAFETY
+          </p>
+        </div>
+      </div>
+
+      <!-- Concise Clinical Explanation -->
+      <p class="mt-7 text-sm text-slate-400 leading-relaxed max-w-4xl">
+        Interpreting complex hepatic vasculature and tumor proximity from 2D axial slices makes pre-operative volume estimation difficult. Leaving insufficient healthy Future Liver Remnant (FLR) increases the risk of post-hepatectomy liver failure—making quantitative 3D comparison essential.
+      </p>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- SECTION 04 — OUR SOLUTION (5-Step Minimalist Numbered Workflow)       -->
+  <!-- ===================================================================== -->
+  <section id="solution" class="py-24 bg-obsidian-950 border-b border-white/[0.06]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="mb-14">
+        <div class="text-[11px] font-mono uppercase tracking-[0.2em] text-slate-400 mb-2">OUR SOLUTION</div>
+        <h2 class="font-bold text-3xl sm:text-4xl tracking-tight text-white">
+          From Medical Imaging to Interactive Planning.
+        </h2>
+      </div>
+
+      <!-- Five-Step Horizontal Numbered Stepper -->
+      <div class="relative">
+        <!-- Connecting Horizontal Line (Desktop) -->
+        <div class="hidden lg:block absolute top-6 left-[10%] right-[10%] h-px bg-gradient-to-r from-white/30 via-sky-300/40 to-white/15"></div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-8 relative z-10">
+          <!-- Step 1 -->
+          <div class="flex flex-col items-center text-center group">
+            <div class="w-12 h-12 rounded-full bg-obsidian-900 border border-white/60 text-white font-mono font-semibold text-sm flex items-center justify-center mb-5 group-hover:border-sky-300 group-hover:bg-sky-400/10 transition-all">
+              1
+            </div>
+            <h3 class="font-semibold text-sm tracking-[0.14em] text-white uppercase">SELECT</h3>
+            <p class="mt-2 text-xs text-slate-400 max-w-[180px] leading-relaxed">
+              Load a patient-specific liver CT case & segmentation masks.
+            </p>
+          </div>
+
+          <!-- Step 2 -->
+          <div class="flex flex-col items-center text-center group">
+            <div class="w-12 h-12 rounded-full bg-obsidian-900 border border-white/25 text-slate-200 font-mono font-semibold text-sm flex items-center justify-center mb-5 group-hover:border-sky-300 group-hover:text-white group-hover:bg-sky-400/10 transition-all">
+              2
+            </div>
+            <h3 class="font-semibold text-sm tracking-[0.14em] text-white uppercase">INSPECT</h3>
+            <p class="mt-2 text-xs text-slate-400 max-w-[180px] leading-relaxed">
+              Explore 3D parenchyma, tumor margins, and hepatic vessels.
+            </p>
+          </div>
+
+          <!-- Step 3 -->
+          <div class="flex flex-col items-center text-center group">
+            <div class="w-12 h-12 rounded-full bg-obsidian-900 border border-white/25 text-slate-200 font-mono font-semibold text-sm flex items-center justify-center mb-5 group-hover:border-sky-300 group-hover:text-white group-hover:bg-sky-400/10 transition-all">
+              3
+            </div>
+            <h3 class="font-semibold text-sm tracking-[0.14em] text-white uppercase">ADJUST</h3>
+            <p class="mt-2 text-xs text-slate-400 max-w-[180px] leading-relaxed">
+              Position and angle the interactive 3D resection plane.
+            </p>
+          </div>
+
+          <!-- Step 4 -->
+          <div class="flex flex-col items-center text-center group">
+            <div class="w-12 h-12 rounded-full bg-obsidian-900 border border-white/25 text-slate-200 font-mono font-semibold text-sm flex items-center justify-center mb-5 group-hover:border-sky-300 group-hover:text-white group-hover:bg-sky-400/10 transition-all">
+              4
+            </div>
+            <h3 class="font-semibold text-sm tracking-[0.14em] text-white uppercase">MEASURE</h3>
+            <p class="mt-2 text-xs text-slate-400 max-w-[180px] leading-relaxed">
+              Calculate voxel-accurate volumetric and FLR % metrics.
+            </p>
+          </div>
+
+          <!-- Step 5 -->
+          <div class="flex flex-col items-center text-center group sm:col-span-2 lg:col-span-1">
+            <div class="w-12 h-12 rounded-full bg-obsidian-900 border border-white/25 text-slate-200 font-mono font-semibold text-sm flex items-center justify-center mb-5 group-hover:border-sky-300 group-hover:text-white group-hover:bg-sky-400/10 transition-all">
+              5
+            </div>
+            <h3 class="font-semibold text-sm tracking-[0.14em] text-white uppercase">COMPARE</h3>
+            <p class="mt-2 text-xs text-slate-400 max-w-[180px] leading-relaxed">
+              Review alternative resection plans side-by-side.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- SECTION 05 — INTERACTIVE 3D EXPERIENCE (Visual Centerpiece)           -->
+  <!-- ===================================================================== -->
+  <section id="prototype" class="py-24 bg-obsidian-950 bg-sci-grid border-b border-white/[0.06]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <!-- Header -->
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+        <div>
+          <div class="text-[11px] font-mono uppercase tracking-[0.2em] text-sky-300 mb-2">INTERACTIVE 3D EXPERIENCE</div>
+          <h2 class="font-bold text-3xl sm:text-4xl tracking-tight text-white">
+            3D Resection Planning Workspace.
+          </h2>
+        </div>
+
+        <!-- Surgical Preset Selector Pills -->
+        <div class="flex flex-wrap items-center gap-2 text-xs font-mono">
+          <button data-preset="right" class="preset-btn px-3.5 py-1.5 rounded-full bg-white text-obsidian-950 font-semibold transition-all">
+            Right Hepatectomy
+          </button>
+          <button data-preset="extended" class="preset-btn px-3.5 py-1.5 rounded-full bg-white/[0.04] text-slate-300 border border-white/15 hover:border-white/40 transition-all">
+            Extended Right
+          </button>
+          <button data-preset="left" class="preset-btn px-3.5 py-1.5 rounded-full bg-white/[0.04] text-slate-300 border border-white/15 hover:border-white/40 transition-all">
+            Left Lateral
+          </button>
+        </div>
+      </div>
+
+      <!-- Outer Workstation Container -->
+      <div class="rounded-3xl bg-obsidian-900/90 border border-white/15 p-4 sm:p-5 shadow-[0_30px_90px_rgba(0,0,0,0.7)]">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+
+          <!-- LEFT PANEL: Anatomy Layers + Adjustable Plane Geometry -->
+          <div class="lg:col-span-3 rounded-2xl bg-obsidian-950/90 border border-white/10 p-5 flex flex-col justify-between gap-6">
+            <div>
+              <h3 class="text-sm font-semibold text-white mb-5">Anatomy Layers</h3>
+
+              <div class="space-y-4">
+                <!-- Toggle 1: Liver -->
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2.5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-slate-200"></span>
+                    <span class="text-sm text-slate-200">Liver</span>
+                  </div>
+                  <label class="sci-switch">
+                    <input type="checkbox" id="toggleLiver" checked />
+                    <span class="sci-switch-track"></span>
+                  </label>
+                </div>
+
+                <!-- Toggle 2: Tumor -->
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2.5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-rose-400"></span>
+                    <span class="text-sm text-slate-200">Tumor</span>
+                  </div>
+                  <label class="sci-switch">
+                    <input type="checkbox" id="toggleTumor" checked />
+                    <span class="sci-switch-track"></span>
+                  </label>
+                </div>
+
+                <!-- Toggle 3: Vascular Structures -->
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2.5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-sky-300"></span>
+                    <span class="text-sm text-slate-200">Vascular Structures</span>
+                  </div>
+                  <label class="sci-switch">
+                    <input type="checkbox" id="toggleVessels" checked />
+                    <span class="sci-switch-track"></span>
+                  </label>
+                </div>
+
+                <!-- Toggle 4: Resection Plane -->
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2.5">
+                    <span class="w-2.5 h-2.5 rounded-sm bg-sky-200/80 border border-white"></span>
+                    <span class="text-sm text-slate-200">Resection Plane</span>
+                  </div>
+                  <label class="sci-switch">
+                    <input type="checkbox" id="togglePlane" checked />
+                    <span class="sci-switch-track"></span>
+                  </label>
+                </div>
+
+                <!-- Toggle 5: Wireframe Mesh -->
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2.5">
+                    <span class="w-2.5 h-2.5 rounded-sm border border-slate-400"></span>
+                    <span class="text-sm text-slate-200">Wireframe Mesh</span>
+                  </div>
+                  <label class="sci-switch">
+                    <input type="checkbox" id="toggleWireframe" checked />
+                    <span class="sci-switch-track"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Adjustable Sliders -->
+            <div class="pt-5 border-t border-white/10 space-y-4">
+              <div class="text-[11px] font-mono uppercase tracking-wider text-slate-400">
+                Adjustable Parameters
+              </div>
+
+              <div>
+                <div class="flex justify-between text-xs font-mono mb-1.5">
+                  <span class="text-slate-400">Plane Offset</span>
+                  <span id="planePosReadout" class="text-white">-6.8 mm</span>
+                </div>
+                <input id="planePosSlider" type="range" min="-0.85" max="0.85" step="0.02" value="-0.08" class="sci-slider" />
+              </div>
+
+              <div>
+                <div class="flex justify-between text-xs font-mono mb-1.5">
+                  <span class="text-slate-400">Plane Angle</span>
+                  <span id="planeAngleReadout" class="text-white">8°</span>
+                </div>
+                <input id="planeAngleSlider" type="range" min="-45" max="45" step="1" value="8" class="sci-slider" />
+              </div>
+
+              <div>
+                <div class="flex justify-between text-xs font-mono mb-1.5">
+                  <span class="text-slate-400">Liver Opacity</span>
+                  <span id="opacityReadout" class="text-white">48%</span>
+                </div>
+                <input id="opacitySlider" type="range" min="10" max="95" step="1" value="48" class="sci-slider" />
+              </div>
+            </div>
+          </div>
+
+          <!-- CENTER VIEWPORT: 3D X-Ray Liver + Bounding Box + Bottom Pill Controls -->
+          <div class="lg:col-span-6 reticle-frame rounded-2xl bg-obsidian-950 border border-white/10 flex flex-col justify-between overflow-hidden min-h-[460px] lg:min-h-[540px]">
+            <!-- Corner Brackets -->
+            <span class="reticle-corner reticle-tl"></span>
+            <span class="reticle-corner reticle-tr"></span>
+            <span class="reticle-corner reticle-bl"></span>
+            <span class="reticle-corner reticle-br"></span>
+
+            <!-- Top Center Coordinate Label -->
+            <div class="pointer-events-none absolute top-4 left-1/2 -translate-x-1/2 z-10 font-mono text-[11px] text-slate-400 tracking-widest">
+              3D · LPS SPACE
+            </div>
+
+            <!-- Interactive Three.js Workspace Canvas -->
+            <div id="workspaceCanvasContainer" class="w-full flex-1 min-h-[380px] canvas-interactive"></div>
+
+            <!-- Bottom Pill Controls -->
+            <div class="relative z-10 px-4 pb-5 pt-2 flex flex-wrap items-center justify-center gap-2">
+              <button id="btnAutoRotate" class="px-3.5 py-1.5 rounded-full text-xs font-medium bg-white text-obsidian-950 transition-all">
+                Rotate
+              </button>
+              <button id="btnZoomIn" class="px-3.5 py-1.5 rounded-full text-xs font-medium bg-obsidian-900/90 text-slate-200 border border-white/20 hover:border-white/50 transition-all">
+                Zoom +
+              </button>
+              <button id="btnZoomOut" class="px-3.5 py-1.5 rounded-full text-xs font-medium bg-obsidian-900/90 text-slate-200 border border-white/20 hover:border-white/50 transition-all">
+                Zoom −
+              </button>
+              <button id="btnQuickTumor" class="px-3.5 py-1.5 rounded-full text-xs font-medium bg-obsidian-900/90 text-slate-200 border border-white/20 hover:border-rose-300/60 transition-all">
+                Show Tumor
+              </button>
+              <button id="btnQuickPlane" class="px-3.5 py-1.5 rounded-full text-xs font-medium bg-obsidian-900/90 text-slate-200 border border-white/20 hover:border-sky-300/60 transition-all">
+                Show Resection Plane
+              </button>
+            </div>
+          </div>
+
+          <!-- RIGHT PANEL: Clean Typographic Volumetric Analysis -->
+          <div class="lg:col-span-3 rounded-2xl bg-obsidian-950/90 border border-white/10 p-5 flex flex-col justify-between gap-6">
+            <div>
+              <div class="flex items-center justify-between mb-5">
+                <h3 class="text-sm font-semibold text-white">Volumetric Analysis</h3>
+                <span class="w-2 h-2 rounded-full bg-sky-300 animate-pulse"></span>
+              </div>
+
+              <div class="space-y-5">
+                <div>
+                  <div class="text-xs text-slate-400">Total Liver Volume</div>
+                  <div id="totalVolValue" class="text-3xl font-bold tracking-tight text-white mt-0.5 font-mono">1450 cc</div>
+                </div>
+
+                <div>
+                  <div class="text-xs text-slate-400">Resected Volume</div>
+                  <div id="resectedVolValue" class="text-3xl font-bold tracking-tight text-slate-200 mt-0.5 font-mono">855 cc</div>
+                </div>
+
+                <div>
+                  <div class="text-xs text-slate-400">Remaining Liver Volume</div>
+                  <div id="remainingVolValue" class="text-3xl font-bold tracking-tight text-white mt-0.5 font-mono">595 cc</div>
+                </div>
+
+                <div class="pt-4 border-t border-white/10">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs text-slate-400">FLR %</span>
+                    <span id="flrBadge" class="font-mono text-[10px] px-2 py-0.5 rounded-full bg-sky-400/15 text-sky-300 border border-sky-300/30">
+                      SAFE THRESHOLD
+                    </span>
+                  </div>
+                  <div id="flrValue" class="text-3xl font-bold tracking-tight text-sky-300 mt-1 font-mono">41.03%</div>
+
+                  <!-- Clean Minimalist FLR Progress Bar -->
+                  <div class="w-full h-1.5 bg-white/10 rounded-full mt-3 overflow-hidden">
+                    <div id="flrBar" class="h-full bg-sky-300 rounded-full transition-all duration-200" style="width: 41.03%"></div>
+                  </div>
+                  <p id="flrNote" class="mt-2 text-[11px] text-slate-400 leading-relaxed">
+                    Above 30% healthy functional remnant benchmark.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="pt-4 border-t border-white/10 text-[10px] font-mono text-slate-500 leading-relaxed">
+              CONCEPT PROTOTYPE · REAL-TIME PLANE SIMULATION
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- SECTION 06 — TECHNICAL ARCHITECTURE                                   -->
+  <!-- ===================================================================== -->
+  <section id="technology" class="py-24 bg-obsidian-950 border-b border-white/[0.06]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="mb-12">
+        <div class="text-[11px] font-mono uppercase tracking-[0.2em] text-slate-400 mb-2">TECHNICAL ARCHITECTURE</div>
+        <h2 class="font-bold text-3xl sm:text-4xl tracking-tight text-white">
+          Engineering the Future of Surgical Planning.
+        </h2>
+      </div>
+
+      <!-- Connected Pipeline Diagram -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 items-stretch">
+        <!-- Node 1 -->
+        <div class="relative sci-card rounded-2xl p-5 flex flex-col items-center text-center justify-center">
+          <div class="w-10 h-10 rounded-xl border border-white/15 bg-white/[0.03] flex items-center justify-center text-white mb-3.5">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2 3.6 3.5 8 3.5s8-1.5 8-3.5V7M4 7c0 2 3.6 3.5 8 3.5s8-1.5 8-3.5M4 7c0-2 3.6-3.5 8-3.5s8 1.5 8 3.5"/></svg>
+          </div>
+          <h3 class="text-xs font-semibold text-white leading-snug">Medical CT Dataset</h3>
+          <span class="hidden lg:block absolute -right-3 top-1/2 -translate-y-1/2 text-slate-500 font-mono text-sm z-10">→</span>
+        </div>
+
+        <!-- Node 2 -->
+        <div class="relative sci-card rounded-2xl p-5 flex flex-col items-center text-center justify-center">
+          <div class="w-10 h-10 rounded-xl border border-white/15 bg-white/[0.03] flex items-center justify-center text-white mb-3.5">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          </div>
+          <h3 class="text-xs font-semibold text-white leading-snug">Medical Image Preprocessing</h3>
+          <span class="hidden lg:block absolute -right-3 top-1/2 -translate-y-1/2 text-slate-500 font-mono text-sm z-10">→</span>
+        </div>
+
+        <!-- Node 3 -->
+        <div class="relative sci-card rounded-2xl p-5 flex flex-col items-center text-center justify-center">
+          <div class="w-10 h-10 rounded-xl border border-white/15 bg-white/[0.03] flex items-center justify-center text-white mb-3.5">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg>
+          </div>
+          <h3 class="text-xs font-semibold text-white leading-snug">Liver Segmentation</h3>
+          <span class="hidden lg:block absolute -right-3 top-1/2 -translate-y-1/2 text-slate-500 font-mono text-sm z-10">→</span>
+        </div>
+
+        <!-- Node 4 -->
+        <div class="relative sci-card rounded-2xl p-5 flex flex-col items-center text-center justify-center">
+          <div class="w-10 h-10 rounded-xl border border-white/15 bg-white/[0.03] flex items-center justify-center text-white mb-3.5">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5"/></svg>
+          </div>
+          <h3 class="text-xs font-semibold text-white leading-snug">3D Mesh Reconstruction</h3>
+          <span class="hidden lg:block absolute -right-3 top-1/2 -translate-y-1/2 text-slate-500 font-mono text-sm z-10">→</span>
+        </div>
+
+        <!-- Node 5 -->
+        <div class="relative sci-card rounded-2xl p-5 flex flex-col items-center text-center justify-center">
+          <div class="w-10 h-10 rounded-xl border border-white/15 bg-white/[0.03] flex items-center justify-center text-sky-300 mb-3.5">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+          </div>
+          <h3 class="text-xs font-semibold text-white leading-snug">Interactive 3D Visualization</h3>
+          <span class="hidden lg:block absolute -right-3 top-1/2 -translate-y-1/2 text-slate-500 font-mono text-sm z-10">→</span>
+        </div>
+
+        <!-- Node 6 -->
+        <div class="sci-card rounded-2xl p-5 flex flex-col items-center text-center justify-center border-sky-300/35">
+          <div class="w-10 h-10 rounded-xl border border-sky-300/30 bg-sky-400/10 flex items-center justify-center text-sky-300 mb-3.5">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+          </div>
+          <h3 class="text-xs font-semibold text-white leading-snug">Voxel-based Volumetric Analysis</h3>
+        </div>
+      </div>
+
+      <!-- Clean Technology Badges Row -->
+      <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
+        <span class="px-4 py-2 rounded-xl bg-obsidian-900 border border-white/12 font-mono text-xs text-slate-200">Python</span>
+        <span class="px-4 py-2 rounded-xl bg-obsidian-900 border border-white/12 font-mono text-xs text-slate-200">NumPy</span>
+        <span class="px-4 py-2 rounded-xl bg-obsidian-900 border border-white/12 font-mono text-xs text-slate-200">NiBabel</span>
+        <span class="px-4 py-2 rounded-xl bg-obsidian-900 border border-white/12 font-mono text-xs text-slate-200">scikit-image</span>
+        <span class="px-4 py-2 rounded-xl bg-obsidian-900 border border-white/12 font-mono text-xs text-sky-200">React</span>
+        <span class="px-4 py-2 rounded-xl bg-obsidian-900 border border-white/12 font-mono text-xs text-sky-200">Three.js</span>
+        <span class="px-4 py-2 rounded-xl bg-obsidian-900 border border-white/12 font-mono text-xs text-sky-200">TypeScript</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- SECTION 07 — THE SCIENCE BEHIND THE NUMBERS                           -->
+  <!-- ===================================================================== -->
+  <section class="py-24 bg-obsidian-950 border-b border-white/[0.06]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="mb-12">
+        <div class="text-[11px] font-mono uppercase tracking-[0.2em] text-slate-400 mb-2">THE SCIENCE BEHIND THE NUMBERS</div>
+        <h2 class="font-bold text-3xl sm:text-4xl tracking-tight text-white">
+          Meshes for Visualization. Voxels for Measurement.
+        </h2>
+      </div>
+
+      <!-- Two Technical Cards -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Card 1: 3D Mesh Visualization -->
+        <div class="sci-card rounded-2xl p-6 sm:p-8 flex flex-col justify-between">
+          <div>
+            <h3 class="font-semibold text-lg text-white mb-4">3D Mesh Visualization</h3>
+            <div class="py-4">
+              <svg viewBox="0 0 420 190" class="w-full h-48 mx-auto">
+                <!-- Reconstructed Smooth Wireframe Liver Mesh -->
+                <g transform="translate(36, 12)">
+                  <path d="M22 104 C18 52, 60 16, 138 18 C196 20, 260 40, 260 66 C260 90, 212 98, 174 116 C134 136, 110 162, 66 162 C36 162, 24 138, 22 104Z" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.85)" stroke-width="1.3"/>
+                  <!-- Fine wireframe mesh lines -->
+                  <g stroke="rgba(255,255,255,0.28)" stroke-width="0.75">
+                    <line x1="64" y1="36" x2="138" y2="18"/>
+                    <line x1="64" y1="36" x2="124" y2="80"/>
+                    <line x1="138" y1="18" x2="124" y2="80"/>
+                    <line x1="138" y1="18" x2="200" y2="38"/>
+                    <line x1="200" y1="38" x2="124" y2="80"/>
+                    <line x1="200" y1="38" x2="190" y2="88"/>
+                    <line x1="260" y1="66" x2="190" y2="88"/>
+                    <line x1="124" y1="80" x2="190" y2="88"/>
+                    <line x1="28" y1="94" x2="124" y2="80"/>
+                    <line x1="28" y1="94" x2="78" y2="130"/>
+                    <line x1="78" y1="130" x2="124" y2="80"/>
+                    <line x1="78" y1="130" x2="152" y2="122"/>
+                    <line x1="124" y1="80" x2="152" y2="122"/>
+                    <line x1="78" y1="130" x2="66" y2="162"/>
+                    <line x1="152" y1="122" x2="66" y2="162"/>
+                    <line x1="28" y1="94" x2="66" y2="162"/>
+                    <line x1="200" y1="38" x2="260" y2="66"/>
+                    <line x1="190" y1="88" x2="152" y2="122"/>
+                  </g>
+                  <!-- Subtle glowing vertices -->
+                  <g fill="#7DD3FC">
+                    <circle cx="124" cy="80" r="2.2"/><circle cx="200" cy="38" r="2"/>
+                    <circle cx="78" cy="130" r="2"/><circle cx="152" cy="122" r="2"/>
+                  </g>
+                </g>
+              </svg>
+            </div>
+          </div>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            Surface meshes reconstructed via Marching Cubes deliver fluid 60 FPS WebGL rendering for inspecting hepatic lobes, vessels, and lesion margins.
+          </p>
+        </div>
+
+        <!-- Card 2: Voxel-based Volumetric Calculation -->
+        <div class="sci-card rounded-2xl p-6 sm:p-8 flex flex-col justify-between">
+          <div>
+            <h3 class="font-semibold text-lg text-white mb-4">Voxel-based Volumetric Calculation</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center py-2">
+              <!-- Live Canvas Isometric Voxel Cube + Cutting Plane -->
+              <div class="sm:col-span-7">
+                <canvas id="voxelCanvas" class="w-full h-48"></canvas>
+              </div>
+              <!-- Scientific Mathematical Equations -->
+              <div class="sm:col-span-5 space-y-3 font-mono text-xs text-slate-300 border-l border-white/10 pl-4">
+                <div>
+                  <div class="text-[10px] text-slate-500 uppercase">Physical Voxel Volume</div>
+                  <div class="text-white text-sm mt-0.5">V<sub>voxel</sub> = Δx · Δy · Δz</div>
+                </div>
+                <div>
+                  <div class="text-[10px] text-slate-500 uppercase">Remaining Volume</div>
+                  <div class="text-white text-sm mt-0.5">V<sub>RLV</sub> = N<sub>rem</sub> · V<sub>voxel</sub></div>
+                </div>
+                <div>
+                  <div class="text-[10px] text-slate-500 uppercase">Future Liver Remnant</div>
+                  <div class="text-sky-300 text-sm mt-0.5">FLR = V<sub>RLV</sub> / (V<sub>TLV</sub> − V<sub>T</sub>)</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            Every volumetric metric is computed directly on the calibrated 3D CT voxel lattice via analytical half-space plane partitioning, eliminating mesh-smoothing bias.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- SECTION 08 — VALIDATION STRATEGY                                      -->
+  <!-- ===================================================================== -->
+  <section class="py-24 bg-obsidian-950 border-b border-white/[0.06]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="mb-12">
+        <div class="text-[11px] font-mono uppercase tracking-[0.2em] text-slate-400 mb-2">VALIDATION STRATEGY</div>
+        <h2 class="font-bold text-3xl sm:text-4xl tracking-tight text-white">
+          Built with Accuracy in Mind.
+        </h2>
+      </div>
+
+      <!-- 5 Validation Strategy Cards (Scientific Monochrome Diagrams) -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <!-- 1. Volume Consistency -->
+        <div class="sci-card sci-card-hover rounded-2xl p-6">
+          <h3 class="font-semibold text-base text-white mb-4">Volume Consistency</h3>
+          <svg viewBox="0 0 280 95" class="w-full h-24 mb-4">
+            <line x1="16" y1="78" x2="112" y2="78" stroke="rgba(255,255,255,0.25)"/>
+            <line x1="16" y1="14" x2="16" y2="78" stroke="rgba(255,255,255,0.25)"/>
+            <line x1="20" y1="74" x2="106" y2="20" stroke="#7DD3FC" stroke-width="1.4" stroke-dasharray="3 3"/>
+            <g fill="#FFFFFF" opacity="0.8">
+              <circle cx="32" cy="66" r="2"/><circle cx="46" cy="57" r="2"/><circle cx="58" cy="50" r="2"/>
+              <circle cx="72" cy="41" r="2"/><circle cx="86" cy="32" r="2"/><circle cx="98" cy="24" r="2"/>
+            </g>
+            <path d="M126 48 L152 48 M146 43 L152 48 L146 53" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.3"/>
+            <rect x="168" y="34" width="96" height="14" rx="7" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.25)"/>
+            <rect x="168" y="34" width="54" height="14" rx="7" fill="rgba(255,255,255,0.35)"/>
+            <rect x="222" y="34" width="42" height="14" rx="7" fill="rgba(125,211,252,0.55)"/>
+            <text x="216" y="68" fill="#94A3B8" font-family="JetBrains Mono" font-size="9.5" text-anchor="middle">V_res + V_rem = 100%</text>
+          </svg>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Strict voxel conservation verified across all oblique resection plane angles with zero double-counting.
+          </p>
+        </div>
+
+        <!-- 2. Synthetic Shape Testing -->
+        <div class="sci-card sci-card-hover rounded-2xl p-6">
+          <h3 class="font-semibold text-base text-white mb-4">Synthetic Shape Testing</h3>
+          <svg viewBox="0 0 280 95" class="w-full h-24 mb-4">
+            <!-- Wireframe Pyramid / Sphere -->
+            <g stroke="rgba(255,255,255,0.65)" fill="rgba(255,255,255,0.05)" stroke-width="1.2">
+              <polygon points="62,14 26,74 98,74"/>
+              <line x1="62" y1="14" x2="62" y2="74" stroke-dasharray="2 2"/>
+            </g>
+            <path d="M118 48 L146 48 M140 43 L146 48 L140 53" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.3"/>
+            <!-- Analytical Cube Benchmark -->
+            <g stroke="#7DD3FC" fill="rgba(125,211,252,0.08)" stroke-width="1.2" transform="translate(174, 16)">
+              <polygon points="18,10 66,10 78,24 30,24"/>
+              <polygon points="30,24 78,24 78,64 30,64"/>
+              <polygon points="18,10 30,24 30,64 18,50"/>
+            </g>
+          </svg>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Benchmarked against closed-form analytical volumes (spheres, cubes, ellipsoids) under arbitrary plane slices.
+          </p>
+        </div>
+
+        <!-- 3. Anisotropic Voxel Spacing -->
+        <div class="sci-card sci-card-hover rounded-2xl p-6">
+          <h3 class="font-semibold text-base text-white mb-4">Anisotropic Voxel Spacing</h3>
+          <svg viewBox="0 0 280 95" class="w-full h-24 mb-4">
+            <!-- Decay curve -->
+            <line x1="18" y1="78" x2="108" y2="78" stroke="rgba(255,255,255,0.25)"/>
+            <line x1="18" y1="14" x2="18" y2="78" stroke="rgba(255,255,255,0.25)"/>
+            <path d="M22 18 Q36 62 102 72" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1.3"/>
+            <path d="M28 18 Q48 56 102 65" fill="none" stroke="#7DD3FC" stroke-width="1.2"/>
+            <path d="M124 48 L152 48 M146 43 L152 48 L146 53" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.3"/>
+            <!-- Non-cubic voxel grid -->
+            <g transform="translate(176, 16)" stroke="rgba(255,255,255,0.5)" fill="none" stroke-width="1">
+              <rect x="0" y="0" width="68" height="62"/>
+              <line x1="0" y1="20" x2="68" y2="20"/>
+              <line x1="0" y1="41" x2="68" y2="41"/>
+              <line x1="17" y1="0" x2="17" y2="62"/>
+              <line x1="34" y1="0" x2="34" y2="62"/>
+              <line x1="51" y1="0" x2="51" y2="62"/>
+            </g>
+          </svg>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Preserves physical accuracy when axial pixel spacing differs from thick CT z-axis slices (Δz &gt; Δx, Δy).
+          </p>
+        </div>
+
+        <!-- 4. Tumor Exclusion -->
+        <div class="sci-card sci-card-hover rounded-2xl p-6">
+          <h3 class="font-semibold text-base text-white mb-4">Tumor Exclusion</h3>
+          <svg viewBox="0 0 280 95" class="w-full h-24 mb-4">
+            <circle cx="72" cy="48" r="30" fill="rgba(255,255,255,0.07)" stroke="rgba(255,255,255,0.55)" stroke-width="1.3"/>
+            <circle cx="84" cy="44" r="11" fill="rgba(251,113,133,0.4)" stroke="#FB7185" stroke-dasharray="3 2"/>
+            <path d="M122 48 L150 48 M144 43 L150 48 L144 53" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.3"/>
+            <circle cx="204" cy="48" r="30" fill="rgba(125,211,252,0.12)" stroke="#7DD3FC" stroke-width="1.3"/>
+            <circle cx="216" cy="44" r="11" fill="#060910" stroke="rgba(255,255,255,0.3)" stroke-dasharray="2 2"/>
+          </svg>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Boolean mask subtraction excludes non-functional tumor mass from total functional volume and FLR denominators.
+          </p>
+        </div>
+
+        <!-- 5. Mesh-Voxel Alignment -->
+        <div class="sci-card sci-card-hover rounded-2xl p-6 md:col-span-2">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 items-center h-full">
+            <div>
+              <h3 class="font-semibold text-base text-white mb-2">Mesh–Voxel Alignment</h3>
+              <p class="text-xs text-slate-400 leading-relaxed">
+                Guarantees that the 3D resection plane manipulated in Three.js world space maps identically through the NIfTI affine transform matrix into the physical voxel coordinate lattice.
+              </p>
+            </div>
+            <svg viewBox="0 0 260 95" class="w-full h-24">
+              <!-- Target Grid -->
+              <g transform="translate(18, 12)" stroke="rgba(255,255,255,0.28)" fill="none" stroke-width="0.9">
+                <rect x="0" y="0" width="70" height="70"/>
+                <line x1="35" y1="0" x2="35" y2="70"/>
+                <line x1="0" y1="35" x2="70" y2="35"/>
+                <circle cx="35" cy="35" r="20" stroke="#7DD3FC" stroke-width="1.3" fill="rgba(125,211,252,0.1)"/>
+              </g>
+              <path d="M104 48 L134 48 M128 43 L134 48 L128 53" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.3"/>
+              <!-- Aligned Stacked Planes -->
+              <g transform="translate(152, 12)" stroke="rgba(255,255,255,0.65)" fill="rgba(255,255,255,0.06)" stroke-width="1.1">
+                <polygon points="44,4 88,20 44,36 0,20"/>
+                <polygon points="44,22 88,38 44,54 0,38" stroke="#7DD3FC" fill="rgba(125,211,252,0.15)"/>
+                <polygon points="44,40 88,56 44,72 0,56"/>
+              </g>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- SECTION 09 — DEVELOPMENT ROADMAP                                      -->
+  <!-- ===================================================================== -->
+  <section id="roadmap" class="py-24 bg-obsidian-950 border-b border-white/[0.06]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="mb-14">
+        <div class="text-[11px] font-mono uppercase tracking-[0.2em] text-slate-400 mb-2">DEVELOPMENT ROADMAP</div>
+        <h2 class="font-bold text-3xl sm:text-4xl tracking-tight text-white">
+          From Concept to Clinical Research.
+        </h2>
+      </div>
+
+      <!-- Minimalist 4-Stage Horizontal Timeline -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 relative">
+        <!-- Stage 01 -->
+        <div class="space-y-3">
+          <div class="flex items-center gap-3">
+            <span class="w-3.5 h-3.5 rounded-full bg-white ring-4 ring-white/15"></span>
+            <div class="flex-1 h-px bg-white/30"></div>
+          </div>
+          <div class="font-mono text-xs font-semibold text-white">01 / Data Preparation</div>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Curate abdominal CT datasets, standardize NIfTI headers, and extract clean liver & tumor segmentation masks.
+          </p>
+        </div>
+
+        <!-- Stage 02 -->
+        <div class="space-y-3">
+          <div class="flex items-center gap-3">
+            <span class="w-3.5 h-3.5 rounded-full bg-sky-300 ring-4 ring-sky-300/15"></span>
+            <div class="flex-1 h-px bg-white/25"></div>
+          </div>
+          <div class="font-mono text-xs font-semibold text-white">02 / 3D Interaction</div>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Deliver Three.js anatomical layer inspection, real-time orbit controls, and adjustable resection plane widgets.
+          </p>
+        </div>
+
+        <!-- Stage 03 -->
+        <div class="space-y-3">
+          <div class="flex items-center gap-3">
+            <span class="w-3.5 h-3.5 rounded-full bg-white/40 ring-4 ring-white/10"></span>
+            <div class="flex-1 h-px bg-white/15"></div>
+          </div>
+          <div class="font-mono text-xs font-semibold text-white">03 / Volumetric Computation</div>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Connect interactive plane transforms directly to the Python/NumPy voxel engine for live FLR calculation.
+          </p>
+        </div>
+
+        <!-- Stage 04 -->
+        <div class="space-y-3">
+          <div class="flex items-center gap-3">
+            <span class="w-3.5 h-3.5 rounded-full bg-white/25 ring-4 ring-white/5"></span>
+            <div class="flex-1 h-px bg-white/10"></div>
+          </div>
+          <div class="font-mono text-xs font-semibold text-white">04 / Validation and Demonstration</div>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Complete synthetic phantom testing, anisotropic spacing verification, and academic prototype demonstration.
+          </p>
+        </div>
+      </div>
+
+      <!-- Research Prototype Notice -->
+      <p class="mt-10 text-xs italic text-slate-500 max-w-3xl leading-relaxed">
+        Research Prototype Notice: HepatoPlan is a research-oriented prototype and proposed development pathway built for academic exploration and hackathon demonstration. It is not a clinically validated or regulatory-cleared surgical guidance system.
+      </p>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- SECTION 10 — FINAL CTA & FOOTER                                       -->
+  <!-- ===================================================================== -->
+  <footer class="bg-obsidian-950 text-slate-300">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-10">
+        <!-- Left CTA Block -->
+        <div class="max-w-xl">
+          <div class="text-[11px] font-mono uppercase tracking-[0.2em] text-slate-500 mb-3">FINAL CTA &amp; FOOTER</div>
+          <h2 class="font-bold text-3xl sm:text-4xl tracking-tight text-white leading-tight">
+            Making Complex Anatomy Easier to Explore.
+          </h2>
+          <p class="mt-4 text-sm sm:text-base text-slate-400 leading-relaxed">
+            HepatoPlan brings patient-specific 3D anatomy, interactive resection geometry, and volumetric analysis into an accessible research environment.
+          </p>
+          <div class="mt-7 flex flex-wrap gap-3">
+            <a href="#prototype" class="px-6 py-2.5 rounded-full text-sm font-semibold bg-white text-obsidian-950 hover:bg-sky-100 transition-colors">
+              Explore Prototype
+            </a>
+            <a href="#home" class="px-6 py-2.5 rounded-full text-sm font-medium text-slate-300 border border-white/20 hover:border-white/50 transition-colors">
+              Back to Top
+            </a>
+          </div>
+        </div>
+
+        <!-- Right Team & Hackathon Attribution -->
+        <div class="md:text-right font-mono text-sm space-y-1.5 border-l md:border-l-0 md:border-r border-white/15 pl-4 md:pl-0 md:pr-4">
+          <div class="text-white font-semibold">Kampung Team</div>
+          <div class="text-slate-300">University of Malaya</div>
+          <div class="text-sky-300">NextHorizon Hackathon 2026</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Minimal Copyright Bar -->
+    <div class="border-t border-white/[0.07]">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 font-mono">
+        <div>Copyright © 2026 HepatoPlan · Research Concept</div>
+        <div class="flex items-center gap-6">
+          <a href="#challenge" class="hover:text-white transition-colors">Challenge</a>
+          <a href="#technology" class="hover:text-white transition-colors">Architecture</a>
+          <a href="#prototype" class="hover:text-white transition-colors">Prototype</a>
+          <a href="#roadmap" class="hover:text-white transition-colors">Roadmap</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ===================================================================== -->
+  <!-- JAVASCRIPT: Frosted X-Ray 3D Liver (Three.js), Adjustable Controls    -->
+  <!-- & Isometric Voxel Lattice Canvas                                      -->
+  <!-- ===================================================================== -->
+  <script>
+    /**
+     * Mobile navigation menu toggle
+     */
+    const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+    const mobileMenu = document.getElementById('mobileMenu');
+    if (mobileMenuBtn && mobileMenu) {
+      mobileMenuBtn.addEventListener('click', () => mobileMenu.classList.toggle('hidden'));
+      mobileMenu.querySelectorAll('a').forEach(a => {
+        a.addEventListener('click', () => mobileMenu.classList.add('hidden'));
+      });
+    }
+
+    /**
+     * Generates a sleek frosted-glass + precision grid texture for the resection plane
+     */
+    function createGlassResectionTexture() {
+      const size = 256;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+
+      const grad = ctx.createLinearGradient(0, 0, size, size);
+      grad.addColorStop(0, 'rgba(224, 242, 254, 0.24)');
+      grad.addColorStop(0.5, 'rgba(125, 211, 252, 0.14)');
+      grad.addColorStop(1, 'rgba(255, 255, 255, 0.08)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, size, size);
+
+      // Hairline scientific grid
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= size; i += 32) {
+        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, size); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(size, i); ctx.stroke();
+      }
+
+      // Crisp border
+      ctx.strokeStyle = 'rgba(186, 230, 253, 0.85)';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(1.5, 1.5, size - 3, size - 3);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.needsUpdate = true;
+      return tex;
+    }
+
+    /**
+     * Builds the frosted X-ray / wireframe anatomical 3D human liver model
+     * inspired by high-end radiology visualization:
+     *  - Translucent frosted silver-slate parenchyma + crisp wireframe overlay
+     *  - Soft coral-rose internal tumor + 10mm margin sphere
+     *  - Glowing ice-white & sky-blue portal/hepatic vascular branches
+     *  - Translucent glass resection plane
+     *  - Optional 3D coordinate bounding box for the studio workspace
+     */
+    function buildAnatomicalLiverGroup(includeBoundingBox = false) {
+      const root = new THREE.Group();
+
+      // 1. SCULPTED ANATOMICAL LIVER GEOMETRY
+      const liverGeo = new THREE.SphereGeometry(1, 56, 42);
+      const pos = liverGeo.attributes.position;
+
+      for (let i = 0; i < pos.count; i++) {
+        const nx = pos.getX(i);
+        const ny = pos.getY(i);
+        const nz = pos.getZ(i);
+
+        const t = (nx + 1) * 0.5;
+        let px = nx * 1.56;
+
+        let py;
+        if (ny >= 0) {
+          const dome = 0.96 - 0.52 * Math.pow(t, 1.55);
+          py = ny * dome + 0.08 * (1 - t);
+        } else {
+          const lower = 0.92 * Math.pow(1 - t, 1.35);
+          py = ny * lower + 0.34 * Math.pow(t, 1.25);
+        }
+
+        let pz = nz * (0.85 - 0.48 * Math.pow(t, 1.2));
+        pz += 0.14 * (1 - nx * nx) * (1 - ny * ny);
+
+        // Anterior falciform indentation
+        if (nz > 0) {
+          pz -= Math.exp(-Math.pow((nx - 0.22) / 0.11, 2)) * nz * 0.11;
+        }
+
+        const organic = 0.02 * Math.sin(nx * 5.0 + ny * 3.5) * Math.cos(nz * 4.0);
+        pos.setXYZ(i, px + organic, py + organic * 0.7, pz);
+      }
+      liverGeo.computeVertexNormals();
+
+      // Frosted X-Ray Glass Parenchyma Material
+      const liverMat = new THREE.MeshPhysicalMaterial({
+        color: 0xdbeafe,
+        emissive: 0x0f172a,
+        roughness: 0.25,
+        metalness: 0.08,
+        clearcoat: 0.6,
+        clearcoatRoughness: 0.2,
+        transparent: true,
+        opacity: 0.48,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      });
+
+      const liverMesh = new THREE.Mesh(liverGeo, liverMat);
+
+      // High-precision silver-white wireframe mesh overlay
+      const wireMat = new THREE.MeshBasicMaterial({
+        color: 0xe2e8f0,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.16
+      });
+      const liverWire = new THREE.Mesh(liverGeo, wireMat);
+
+      const liverLayer = new THREE.Group();
+      liverLayer.add(liverMesh);
+      root.add(liverLayer);
+      root.add(liverWire);
+
+      // 2. TUMOR & MARGIN HALO
+      const tumorLayer = new THREE.Group();
+      const tumorGeo = new THREE.IcosahedronGeometry(0.23, 3);
+      const tPos = tumorGeo.attributes.position;
+      for (let i = 0; i < tPos.count; i++) {
+        const vx = tPos.getX(i), vy = tPos.getY(i), vz = tPos.getZ(i);
+        const bump = 1 + 0.08 * Math.sin(vx * 14) * Math.cos(vy * 14);
+        tPos.setXYZ(i, vx * bump, vy * bump, vz * bump);
+      }
+      tumorGeo.computeVertexNormals();
+
+      const tumorMat = new THREE.MeshStandardMaterial({
+        color: 0xfb7185,
+        emissive: 0xbe123c,
+        emissiveIntensity: 0.55,
+        roughness: 0.3
+      });
+      const tumorMesh = new THREE.Mesh(tumorGeo, tumorMat);
+      tumorMesh.position.set(-0.66, 0.16, 0.12);
+      tumorLayer.add(tumorMesh);
+
+      const marginGeo = new THREE.SphereGeometry(0.33, 20, 20);
+      const marginMat = new THREE.MeshBasicMaterial({
+        color: 0xfda4af,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.22
+      });
+      const marginHalo = new THREE.Mesh(marginGeo, marginMat);
+      marginHalo.position.copy(tumorMesh.position);
+      tumorLayer.add(marginHalo);
+      root.add(tumorLayer);
+
+      // 3. HEPATIC VASCULAR STRUCTURES (Ice-White & Sky-Cyan Branches)
+      const vesselLayer = new THREE.Group();
+      function addVessel(points, radius, colorHex) {
+        const curve = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(p[0], p[1], p[2])));
+        const geo = new THREE.TubeGeometry(curve, 24, radius, 10, false);
+        const mat = new THREE.MeshStandardMaterial({
+          color: colorHex,
+          emissive: colorHex,
+          emissiveIntensity: 0.4,
+          roughness: 0.25
+        });
+        vesselLayer.add(new THREE.Mesh(geo, mat));
+      }
+
+      // Portal Vein Tree (Ice-Cyan)
+      addVessel([[0.05, -0.52, -0.12], [0.02, -0.18, -0.05], [-0.24, 0.02, 0.0]], 0.044, 0x7dd3fc);
+      addVessel([[-0.24, 0.02, 0.0], [-0.55, 0.25, 0.16], [-0.92, 0.45, 0.18]], 0.028, 0x7dd3fc);
+      addVessel([[-0.24, 0.02, 0.0], [-0.62, -0.12, -0.18], [-1.05, -0.22, -0.12]], 0.026, 0x7dd3fc);
+      addVessel([[-0.55, -0.08, -0.12], [-0.82, -0.42, 0.02]], 0.018, 0x7dd3fc);
+      addVessel([[0.02, -0.18, -0.05], [0.38, 0.12, 0.05], [0.85, 0.28, 0.06]], 0.028, 0x7dd3fc);
+      addVessel([[0.38, 0.12, 0.05], [0.68, 0.42, -0.04]], 0.018, 0x7dd3fc);
+
+      // Hepatic Veins (Crisp Silver-White)
+      addVessel([[0.08, 0.72, -0.22], [-0.35, 0.52, -0.08], [-0.85, 0.12, 0.08]], 0.03, 0xe2e8f0);
+      addVessel([[0.08, 0.72, -0.22], [-0.05, 0.35, 0.12], [-0.15, -0.15, 0.25]], 0.026, 0xe2e8f0);
+      addVessel([[0.08, 0.72, -0.22], [0.42, 0.48, 0.0], [0.95, 0.34, 0.04]], 0.025, 0xe2e8f0);
+
+      root.add(vesselLayer);
+
+      // 4. FROSTED GLASS RESECTION PLANE
+      const planeLayer = new THREE.Group();
+      const planeGeo = new THREE.PlaneGeometry(2.2, 2.2);
+      const planeMat = new THREE.MeshBasicMaterial({
+        map: createGlassResectionTexture(),
+        transparent: true,
+        opacity: 0.9,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      });
+      const planeMesh = new THREE.Mesh(planeGeo, planeMat);
+      planeMesh.rotation.y = Math.PI / 2;
+      planeLayer.add(planeMesh);
+      planeLayer.position.set(-0.08, 0.05, 0);
+      planeLayer.rotation.z = THREE.MathUtils.degToRad(8);
+      root.add(planeLayer);
+
+      // 5. OPTIONAL SCIENTIFIC 3D BOUNDING BOX (for Workspace Viewport)
+      if (includeBoundingBox) {
+        const boxGeo = new THREE.BoxGeometry(3.45, 2.35, 2.2);
+        const edges = new THREE.EdgesGeometry(boxGeo);
+        const boxMat = new THREE.LineBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.15
+        });
+        const boundingBox = new THREE.LineSegments(edges, boxMat);
+        root.add(boundingBox);
+      }
+
+      return {
+        root,
+        liverLayer,
+        liverWire,
+        liverMat,
+        tumorLayer,
+        vesselLayer,
+        planeLayer
+      };
+    }
+
+    /**
+     * Initializes an interactive Three.js 3D liver viewport with mouse & touch orbit
+     */
+    function initLiverScene(containerId, options = {}) {
+      const container = document.getElementById(containerId);
+      if (!container || typeof THREE === 'undefined') return null;
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(
+        38,
+        container.clientWidth / Math.max(container.clientHeight, 1),
+        0.1,
+        100
+      );
+      camera.position.set(0, 0.25, options.cameraZ || 4.4);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      container.innerHTML = '';
+      container.appendChild(renderer.domElement);
+
+      // Clean Monochrome + Subtle Ice-Blue Studio Lighting
+      scene.add(new THREE.AmbientLight(0xf1f5f9, 0.8));
+
+      const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
+      keyLight.position.set(4, 5, 5);
+      scene.add(keyLight);
+
+      const iceRim = new THREE.PointLight(0x7dd3fc, 1.4, 14);
+      iceRim.position.set(-4, 2, 3);
+      scene.add(iceRim);
+
+      const backLight = new THREE.PointLight(0xe2e8f0, 0.9, 14);
+      backLight.position.set(3, -2, -4);
+      scene.add(backLight);
+
+      const anatomy = buildAnatomicalLiverGroup(Boolean(options.boundingBox));
+      scene.add(anatomy.root);
+
+      // Mouse & Touch Orbit Controls
+      let isDragging = false;
+      let prevX = 0, prevY = 0;
+      let targetRotY = options.initialRotY ?? -0.32;
+      let targetRotX = options.initialRotX ?? 0.14;
+      let autoRotate = options.autoRotate ?? true;
+
+      const onDown = (x, y) => { isDragging = true; prevX = x; prevY = y; };
+      const onMove = (x, y) => {
+        if (!isDragging) return;
+        targetRotY += (x - prevX) * 0.008;
+        targetRotX = Math.max(-0.9, Math.min(0.9, targetRotX + (y - prevY) * 0.006));
+        prevX = x; prevY = y;
+      };
+      const onUp = () => { isDragging = false; };
+
+      const dom = renderer.domElement;
+      dom.addEventListener('mousedown', e => onDown(e.clientX, e.clientY));
+      window.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
+      window.addEventListener('mouseup', onUp);
+
+      dom.addEventListener('touchstart', e => {
+        if (e.touches.length === 1) onDown(e.touches[0].clientX, e.touches[0].clientY);
+      }, { passive: true });
+      dom.addEventListener('touchmove', e => {
+        if (e.touches.length === 1) onMove(e.touches[0].clientX, e.touches[0].clientY);
+      }, { passive: true });
+      dom.addEventListener('touchend', onUp);
+
+      window.addEventListener('resize', () => {
+        const w = container.clientWidth;
+        const h = Math.max(container.clientHeight, 1);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+      });
+
+      const clock = new THREE.Clock();
+      function animate() {
+        requestAnimationFrame(animate);
+        const t = clock.getElapsedTime();
+        if (autoRotate && !isDragging) targetRotY += 0.003;
+
+        anatomy.root.rotation.y += (targetRotY - anatomy.root.rotation.y) * 0.1;
+        anatomy.root.rotation.x += (targetRotX - anatomy.root.rotation.x) * 0.1;
+        anatomy.root.position.y = Math.sin(t * 1.3) * 0.03;
+
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      return {
+        anatomy,
+        setAutoRotate: v => { autoRotate = v; },
+        getAutoRotate: () => autoRotate,
+        zoomBy: delta => {
+          camera.position.z = Math.max(2.7, Math.min(7.0, camera.position.z + delta));
+        }
+      };
+    }
+
+    /**
+     * Draws the Monochrome + Ice-Cyan Isometric 3D Voxel Cube Grid with Slicing Plane (Section 07)
+     */
+    function drawVoxelGridCanvas() {
+      const canvas = document.getElementById('voxelCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+
+      const w = rect.width;
+      const h = rect.height;
+      ctx.clearRect(0, 0, w, h);
+
+      const cx = w * 0.5;
+      const cy = h * 0.6;
+      const s = Math.min(w, h) * 0.072;
+
+      function iso(x, y, z) {
+        return {
+          x: cx + (x - y) * s * 0.88,
+          y: cy + (x + y) * s * 0.45 - z * s * 0.92
+        };
+      }
+
+      function drawVoxel(x, y, z, retained) {
+        const p0 = iso(x, y, z), p1 = iso(x + 1, y, z), p2 = iso(x + 1, y + 1, z), p3 = iso(x, y + 1, z);
+        const t0 = iso(x, y, z + 1), t1 = iso(x + 1, y, z + 1), t2 = iso(x + 1, y + 1, z + 1), t3 = iso(x, y + 1, z + 1);
+
+        const topFill = retained ? 'rgba(186, 230, 253, 0.24)' : 'rgba(255, 255, 255, 0.08)';
+        const sideFill = retained ? 'rgba(125, 211, 252, 0.14)' : 'rgba(255, 255, 255, 0.04)';
+        const stroke = retained ? 'rgba(186, 230, 253, 0.55)' : 'rgba(255, 255, 255, 0.28)';
+
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 0.7;
+
+        // Top
+        ctx.beginPath(); ctx.moveTo(t0.x, t0.y); ctx.lineTo(t1.x, t1.y); ctx.lineTo(t2.x, t2.y); ctx.lineTo(t3.x, t3.y); ctx.closePath();
+        ctx.fillStyle = topFill; ctx.fill(); ctx.stroke();
+        // Left
+        ctx.beginPath(); ctx.moveTo(t3.x, t3.y); ctx.lineTo(t2.x, t2.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.closePath();
+        ctx.fillStyle = sideFill; ctx.fill(); ctx.stroke();
+        // Right
+        ctx.beginPath(); ctx.moveTo(t1.x, t1.y); ctx.lineTo(t2.x, t2.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p1.x, p1.y); ctx.closePath();
+        ctx.fillStyle = sideFill; ctx.fill(); ctx.stroke();
+      }
+
+      const cutX = 0;
+      for (let z = -1; z <= 2; z++) {
+        for (let y = -2; y <= 1; y++) {
+          for (let x = -2; x <= 2; x++) {
+            drawVoxel(x, y, z, x >= cutX);
+          }
+        }
+      }
+
+      // Slicing plane
+      const c1 = iso(cutX, -2.8, -1.6);
+      const c2 = iso(cutX, 2.8, -1.6);
+      const c3 = iso(cutX, 2.8, 3.6);
+      const c4 = iso(cutX, -2.8, 3.6);
+      ctx.beginPath();
+      ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y); ctx.lineTo(c3.x, c3.y); ctx.lineTo(c4.x, c4.y);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(125, 211, 252, 0.16)';
+      ctx.fill();
+      ctx.strokeStyle = '#BAE6FD';
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+    }
+
+    /**
+     * Binds all Interactive 3D Workspace toggles, sliders, presets, and live cc / FLR readouts
+     */
+    function bindWorkspaceControls(workspace) {
+      if (!workspace) return;
+      const { anatomy } = workspace;
+
+      const toggleLiver = document.getElementById('toggleLiver');
+      const toggleTumor = document.getElementById('toggleTumor');
+      const toggleVessels = document.getElementById('toggleVessels');
+      const togglePlane = document.getElementById('togglePlane');
+      const toggleWireframe = document.getElementById('toggleWireframe');
+
+      const planePosSlider = document.getElementById('planePosSlider');
+      const planeAngleSlider = document.getElementById('planeAngleSlider');
+      const opacitySlider = document.getElementById('opacitySlider');
+
+      const planePosReadout = document.getElementById('planePosReadout');
+      const planeAngleReadout = document.getElementById('planeAngleReadout');
+      const opacityReadout = document.getElementById('opacityReadout');
+
+      const resectedVolValue = document.getElementById('resectedVolValue');
+      const remainingVolValue = document.getElementById('remainingVolValue');
+      const flrValue = document.getElementById('flrValue');
+      const flrBar = document.getElementById('flrBar');
+      const flrBadge = document.getElementById('flrBadge');
+      const flrNote = document.getElementById('flrNote');
+
+      const TOTAL_VOL = 1450; // cc
+
+      function updateVolumetrics() {
+        const xPos = parseFloat(planePosSlider.value);
+        const angleDeg = parseFloat(planeAngleSlider.value);
+
+        anatomy.planeLayer.position.x = xPos;
+        anatomy.planeLayer.rotation.z = THREE.MathUtils.degToRad(angleDeg);
+
+        planePosReadout.textContent = `${(xPos * 85).toFixed(1)} mm`;
+        planeAngleReadout.textContent = `${angleDeg}°`;
+
+        const effectiveShift = xPos + Math.sin(THREE.MathUtils.degToRad(angleDeg)) * 0.14;
+        const flrFraction = Math.max(0.10, Math.min(0.84, 0.42 - effectiveShift * 0.36));
+        const flrPct = flrFraction * 100;
+
+        const remaining = Math.round(TOTAL_VOL * flrFraction);
+        const resected = TOTAL_VOL - remaining;
+
+        resectedVolValue.textContent = `${resected} cc`;
+        remainingVolValue.textContent = `${remaining} cc`;
+        flrValue.textContent = `${flrPct.toFixed(2)}%`;
+        flrBar.style.width = `${flrPct.toFixed(1)}%`;
+
+        if (flrPct >= 30) {
+          flrBar.className = 'h-full bg-sky-300 rounded-full transition-all duration-200';
+          flrValue.className = 'text-3xl font-bold tracking-tight text-sky-300 mt-1 font-mono';
+          flrBadge.textContent = 'SAFE THRESHOLD';
+          flrBadge.className = 'font-mono text-[10px] px-2 py-0.5 rounded-full bg-sky-400/15 text-sky-300 border border-sky-300/30';
+          flrNote.textContent = 'Above 30% healthy functional remnant benchmark.';
+        } else if (flrPct >= 22) {
+          flrBar.className = 'h-full bg-amber-300 rounded-full transition-all duration-200';
+          flrValue.className = 'text-3xl font-bold tracking-tight text-amber-300 mt-1 font-mono';
+          flrBadge.textContent = 'BORDERLINE';
+          flrBadge.className = 'font-mono text-[10px] px-2 py-0.5 rounded-full bg-amber-400/15 text-amber-300 border border-amber-300/30';
+          flrNote.textContent = 'Caution: Approaching minimum 25%–30% FLR margin.';
+        } else {
+          flrBar.className = 'h-full bg-rose-400 rounded-full transition-all duration-200';
+          flrValue.className = 'text-3xl font-bold tracking-tight text-rose-400 mt-1 font-mono';
+          flrBadge.textContent = 'HIGH RISK';
+          flrBadge.className = 'font-mono text-[10px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300 border border-rose-400/35';
+          flrNote.textContent = 'Insufficient remnant volume: Elevated PHLF risk.';
+        }
+      }
+
+      // Layer Toggles
+      toggleLiver.addEventListener('change', () => { anatomy.liverLayer.visible = toggleLiver.checked; });
+      toggleTumor.addEventListener('change', () => { anatomy.tumorLayer.visible = toggleTumor.checked; });
+      toggleVessels.addEventListener('change', () => { anatomy.vesselLayer.visible = toggleVessels.checked; });
+      togglePlane.addEventListener('change', () => { anatomy.planeLayer.visible = togglePlane.checked; });
+      toggleWireframe.addEventListener('change', () => { anatomy.liverWire.visible = toggleWireframe.checked; });
+
+      // Sliders
+      planePosSlider.addEventListener('input', updateVolumetrics);
+      planeAngleSlider.addEventListener('input', updateVolumetrics);
+      opacitySlider.addEventListener('input', () => {
+        const val = parseInt(opacitySlider.value, 10);
+        opacityReadout.textContent = `${val}%`;
+        anatomy.liverMat.opacity = val / 100;
+      });
+
+      // Bottom Pill Controls
+      const btnAutoRotate = document.getElementById('btnAutoRotate');
+      btnAutoRotate.addEventListener('click', () => {
+        const next = !workspace.getAutoRotate();
+        workspace.setAutoRotate(next);
+        btnAutoRotate.className = next
+          ? 'px-3.5 py-1.5 rounded-full text-xs font-medium bg-white text-obsidian-950 transition-all'
+          : 'px-3.5 py-1.5 rounded-full text-xs font-medium bg-obsidian-900/90 text-slate-200 border border-white/20 hover:border-white/50 transition-all';
+      });
+
+      document.getElementById('btnZoomIn').addEventListener('click', () => workspace.zoomBy(-0.55));
+      document.getElementById('btnZoomOut').addEventListener('click', () => workspace.zoomBy(0.55));
+
+      document.getElementById('btnQuickTumor').addEventListener('click', () => {
+        toggleTumor.checked = !toggleTumor.checked;
+        anatomy.tumorLayer.visible = toggleTumor.checked;
+      });
+
+      document.getElementById('btnQuickPlane').addEventListener('click', () => {
+        togglePlane.checked = !togglePlane.checked;
+        anatomy.planeLayer.visible = togglePlane.checked;
+      });
+
+      // Surgical Presets
+      const presets = {
+        right: { pos: -0.08, angle: 8 },
+        extended: { pos: 0.50, angle: 14 },
+        left: { pos: -0.68, angle: -10 }
+      };
+
+      const presetButtons = document.querySelectorAll('.preset-btn');
+      presetButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const key = btn.getAttribute('data-preset');
+          if (!presets[key]) return;
+          planePosSlider.value = presets[key].pos;
+          planeAngleSlider.value = presets[key].angle;
+          updateVolumetrics();
+
+          presetButtons.forEach(b => {
+            b.className = 'preset-btn px-3.5 py-1.5 rounded-full bg-white/[0.04] text-slate-300 border border-white/15 hover:border-white/40 transition-all';
+          });
+          btn.className = 'preset-btn px-3.5 py-1.5 rounded-full bg-white text-obsidian-950 font-semibold transition-all';
+        });
+      });
+
+      updateVolumetrics();
+    }
+
+    /**
+     * Boot all 3D and 2D scientific visualizations on window load
+     */
+    window.onload = function () {
+      try {
+        initLiverScene('heroCanvasContainer', {
+          cameraZ: 4.1,
+          initialRotY: -0.32,
+          initialRotX: 0.14,
+          autoRotate: true,
+          boundingBox: false
+        });
+
+        const workspace = initLiverScene('workspaceCanvasContainer', {
+          cameraZ: 4.75,
+          initialRotY: -0.25,
+          initialRotX: 0.15,
+          autoRotate: true,
+          boundingBox: true
+        });
+        bindWorkspaceControls(workspace);
+
+        drawVoxelGridCanvas();
+        window.addEventListener('resize', drawVoxelGridCanvas);
+      } catch (err) {
+        console.error('HepatoPlan initialization error:', err);
+      }
+    };
+  </script>
+</body>
+</html>

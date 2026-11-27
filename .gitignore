@@ -3,3 +3,8 @@
 /backend-tasks.md
 /HepatoPlan Product Requirements.md
 /AGENTS.md
+/frontend/node_modules/
+/frontend/dist/
+/frontend/test-results/
+/tools/.venv/
+/tools/**/__pycache__/
