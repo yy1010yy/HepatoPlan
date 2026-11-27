@@ -92,6 +92,7 @@ test('an unsaved cut retains its measured alternative after a failed AI call and
   await expect(page.locator('#remaining')).toHaveText(initialVolume ?? '')
   expect(await originalElement?.evaluate(element => element.isConnected)).toBe(true)
   await page.getByRole('button', { name: 'Keep current cut' }).click()
+  await expect(page.getByRole('button', { name: 'Save plan', exact: true })).toBeFocused()
   await retry.focus()
   await page.keyboard.press('Enter')
   await expect(panel.getByRole('heading', { name: 'AI recommendation' })).toBeVisible()
