@@ -9,9 +9,21 @@ import type { CaseController, CaseState, ComparisonPair } from './case-controlle
 import { differenceRegions } from './plan-difference-panel.ts'
 import type { ResectionPlane } from './plane.ts'
 
-const removedColour = 0xe38558
-const remainingColour = 0x50a89f
+export const anatomyColours = {
+  remaining: '#50a89f',
+  removed: '#e38558',
+  tumour: '#e54678',
+  plane: '#70c4f3',
+}
 const localZ = new Vector3(0, 0, 1)
+const localX = new Vector3(1, 0, 0)
+const localY = new Vector3(0, 1, 0)
+
+function framingScale(camera: PerspectiveCamera, aspect: number) {
+  const halfVertical = camera.fov * Math.PI / 360
+  const halfHorizontal = Math.atan(Math.tan(halfVertical) * aspect)
+  return 1 / Math.sin(Math.min(halfHorizontal, halfVertical))
+}
 
 function geometryFor(mesh: DecodedMesh): BufferGeometry {
   const geometry = new BufferGeometry()
@@ -61,6 +73,7 @@ export function createResectionScene(aspect = 1) {
   const scene = new Scene()
   const camera = new PerspectiveCamera(42, aspect, 0.1, 1000)
   const target = new Vector3()
+  const liverSize = new Vector3()
   const anatomy = new Group()
   scene.add(anatomy, new AmbientLight(0xffffff, 1.4))
   const light = new DirectionalLight(0xffffff, 2.0)
@@ -70,7 +83,7 @@ export function createResectionScene(aspect = 1) {
   const positivePlane = new Plane()
   const negativePlane = new Plane()
   const positiveMaterial = new MeshStandardMaterial({
-    color: removedColour, clippingPlanes: [positivePlane], side: DoubleSide, transparent: true,
+    color: anatomyColours.removed, clippingPlanes: [positivePlane], side: DoubleSide, transparent: true,
     opacity: 0.55, depthWrite: false, forceSinglePass: true,
   })
   const negativeMaterial = positiveMaterial.clone()
@@ -80,9 +93,9 @@ export function createResectionScene(aspect = 1) {
   const planeA = new Vector4()
   const planeB = new Vector4()
   enableComparisonShader(comparisonMaterial, planeA, planeB)
-  const tumourMaterial = new MeshStandardMaterial({ color: 0xe54678, roughness: 0.7 })
+  const tumourMaterial = new MeshStandardMaterial({ color: anatomyColours.tumour, roughness: 0.7 })
   const overlayMaterial = new MeshBasicMaterial({
-    color: 0x70c4f3, opacity: 0.19, transparent: true, side: DoubleSide, depthWrite: false,
+    color: anatomyColours.plane, opacity: 0.19, transparent: true, side: DoubleSide, depthWrite: false,
   })
   const overlay = new Mesh(new PlaneGeometry(1, 1), overlayMaterial)
   overlay.name = 'resection-plane'
@@ -140,17 +153,15 @@ export function createResectionScene(aspect = 1) {
 
       const min = new Vector3(...state.liver.bounds.min)
       const max = new Vector3(...state.liver.bounds.max)
+      liverSize.subVectors(max, min)
       target.copy(min).lerp(max, 0.5)
       const radius = Math.max(1, min.distanceTo(max) / 2)
-      const halfVertical = camera.fov * Math.PI / 360
-      const halfHorizontal = Math.atan(Math.tan(halfVertical) * camera.aspect)
-      const distance = radius * 1.15 / Math.sin(Math.min(halfHorizontal, halfVertical))
+      const distance = radius * 1.15 * framingScale(camera, camera.aspect)
       camera.position.set(0.65, 0.45, 1).setLength(distance).add(target)
       camera.near = Math.max(0.01, radius / 100)
       camera.far = distance + 20 * radius
       camera.lookAt(target)
       camera.updateProjectionMatrix()
-      overlay.scale.set(2.4 * radius, 2.4 * radius, 1)
       selectionToken = state.selectionToken
     }
 
@@ -160,10 +171,15 @@ export function createResectionScene(aspect = 1) {
       const point = new Vector3(...pointMm)
       positivePlane.setFromNormalAndCoplanarPoint(normal, point)
       negativePlane.copy(positivePlane).negate()
-      positiveMaterial.color.setHex(resectSide === 'positive' ? removedColour : remainingColour)
-      negativeMaterial.color.setHex(resectSide === 'negative' ? removedColour : remainingColour)
-      overlay.position.copy(point)
+      positiveMaterial.color.set(resectSide === 'positive' ? anatomyColours.removed : anatomyColours.remaining)
+      negativeMaterial.color.set(resectSide === 'negative' ? anatomyColours.removed : anatomyColours.remaining)
       overlay.quaternion.setFromUnitVectors(localZ, normal)
+      positivePlane.projectPoint(target, overlay.position)
+      const overlayExtent = (axis: Vector3) => {
+        const { x, y, z } = axis.clone().applyQuaternion(overlay.quaternion)
+        return 1.1 * (Math.abs(x) * liverSize.x + Math.abs(y) * liverSize.y + Math.abs(z) * liverSize.z)
+      }
+      overlay.scale.set(overlayExtent(localX), overlayExtent(localY), 1)
       revision = state.revision
     }
     const pair = state.comparison.status === 'idle' ? undefined : state.comparison.pair
@@ -214,7 +230,12 @@ export function createResectionScene(aspect = 1) {
   }
 }
 
-export function mountResectionViewer(container: HTMLElement, controller: Pick<CaseController, 'subscribe'>) {
+export type ResectionViewerSource = Pick<CaseController, 'subscribe'>
+
+export function mountResectionViewer(container: HTMLElement, controller: ResectionViewerSource, options: {
+  rotateOnly?: boolean
+  onError?: (error: unknown) => void
+} = {}) {
   const width = Math.max(1, container.clientWidth)
   const height = Math.max(1, container.clientHeight)
   const renderer = new WebGLRenderer({ antialias: true, alpha: true })
@@ -225,27 +246,79 @@ export function mountResectionViewer(container: HTMLElement, controller: Pick<Ca
 
   const view = createResectionScene(width / height)
   const controls = new OrbitControls(view.camera, renderer.domElement)
+  controls.enablePan = controls.enableZoom = !options.rotateOnly
+
+  const arrowKeys = new Map([
+    ['ArrowLeft', [1, 0]], ['ArrowRight', [-1, 0]], ['ArrowUp', [0, 1]], ['ArrowDown', [0, -1]],
+  ])
+  function cameraKey(event: KeyboardEvent) {
+    if (event.altKey || event.ctrlKey || event.metaKey) return
+    const direction = arrowKeys.get(event.key)
+    if (direction) {
+      const [x, y] = direction
+      if (event.shiftKey) {
+        if (!controls.enablePan) return
+        controls.pan(x * 25, y * 25)
+      } else {
+        controls.rotateLeft(x * Math.PI / 18)
+        controls.rotateUp(y * Math.PI / 18)
+      }
+    } else if (controls.enableZoom && (event.key === '+' || event.key === '=')) {
+      controls.dollyIn(0.85)
+    } else if (controls.enableZoom && event.key === '-') {
+      controls.dollyOut(0.85)
+    } else return
+    event.preventDefault()
+  }
+
   let frame: number | undefined
+  let failed = false
+  function fail(error: unknown) {
+    if (failed) return
+    if (!options.onError) throw error
+    failed = true
+    options.onError(error)
+  }
+  function contextLost() {
+    if (options.onError) fail(new Error('WebGL context lost.'))
+  }
   function requestRender() {
-    if (frame !== undefined) return
+    if (failed || frame !== undefined) return
     frame = requestAnimationFrame(() => {
       frame = undefined
-      renderer.render(view.scene, view.camera)
+      if (failed) return
+      try {
+        renderer.render(view.scene, view.camera)
+      } catch (error) {
+        fail(error)
+      }
     })
   }
+  container.addEventListener('keydown', cameraKey)
+  renderer.domElement.addEventListener('webglcontextlost', contextLost)
   controls.addEventListener('change', requestRender)
   const unsubscribe = controller.subscribe(state => {
-    if (view.update(state)) {
-      controls.target.copy(view.target)
-      controls.update()
-      controls.saveState()
+    if (failed) return
+    try {
+      if (view.update(state)) {
+        controls.target.copy(view.target)
+        controls.update()
+        controls.saveState()
+      }
+      requestRender()
+    } catch (error) {
+      fail(error)
     }
-    requestRender()
   })
   const observer = new ResizeObserver(() => {
+    if (failed) return
     const width = Math.max(1, container.clientWidth)
     const height = Math.max(1, container.clientHeight)
-    view.camera.aspect = width / height
+    const aspect = width / height
+    const scale = framingScale(view.camera, aspect) / framingScale(view.camera, view.camera.aspect)
+    view.camera.position.sub(controls.target).multiplyScalar(scale).add(controls.target)
+    view.camera.far *= scale
+    view.camera.aspect = aspect
     view.camera.updateProjectionMatrix()
     renderer.setSize(width, height)
     requestRender()
@@ -260,10 +333,13 @@ export function mountResectionViewer(container: HTMLElement, controller: Pick<Ca
       unsubscribe()
       observer.disconnect()
       if (frame !== undefined) cancelAnimationFrame(frame)
+      container.removeEventListener('keydown', cameraKey)
+      renderer.domElement.removeEventListener('webglcontextlost', contextLost)
       controls.removeEventListener('change', requestRender)
       controls.dispose()
       view.dispose()
       renderer.dispose()
+      renderer.forceContextLoss()
       renderer.domElement.remove()
     },
   }

@@ -4,6 +4,7 @@ import type { CaseState } from './planning/case-controller.ts'
 import { loadCaseIndex } from './planning/case-loader.ts'
 import type { LoadedCaseIndex } from './planning/case-loader.ts'
 import { PlanSession } from './planning/plan-session.ts'
+import { defaultPlane } from './planning/plane-controls.ts'
 
 export const demoId = 'case-002'
 const indexUrl = new URL('cases/index.json', new URL(import.meta.env.BASE_URL, location.href))
@@ -40,6 +41,7 @@ function describeCase(state: CaseState, catalogueStatus: LoadStatus): LoadStatus
 
 export function usePreparedCases() {
   const [catalogue, setCatalogue] = useState<Catalogue>({ status: 'loading' })
+  const [demo, setDemo] = useState<Extract<CaseState, { status: 'ready' }>>()
   const request = useRef<AbortController | undefined>(undefined)
   const engine = useRef<Engine | undefined>(undefined)
 
@@ -83,12 +85,20 @@ export function usePreparedCases() {
   const subscribe = useCallback((notify: () => void) => controller?.subscribe(notify) ?? (() => {}), [controller])
   const snapshot = useCallback(() => controller?.state ?? idle, [controller])
   const state = useSyncExternalStore(subscribe, snapshot)
+  useEffect(() => {
+    if (state.status !== 'ready' || state.caseId !== demoId) return
+    setDemo(cached => cached?.selectionToken === state.selectionToken ? cached : {
+      ...state, plane: defaultPlane(state.liver.bounds), comparison: { status: 'idle' },
+    })
+  }, [state])
   const cases = catalogue.status === 'ready' ? catalogue.data.index.cases : []
   const hasDemo = cases.some(entry => entry.caseId === demoId)
   const activeId = state.status === 'idle' ? undefined : state.caseId
   const catalogueStatus = describeCatalogue(catalogue, hasDemo)
   const caseStatus = describeCase(state, catalogueStatus)
-  const demoStatus = activeId === demoId ? caseStatus : activeId && hasDemo
+  const visibleDemo = activeId === demoId && state.status !== 'ready' ? undefined : demo
+  const demoStatus = activeId === demoId ? caseStatus : visibleDemo ? describeCase(visibleDemo, catalogueStatus)
+    : activeId && hasDemo
     ? { message: 'Open the demo to load this case.' } : catalogueStatus
 
   function selectCase(caseId: string) {
@@ -98,7 +108,7 @@ export function usePreparedCases() {
   }
 
   return {
-    state, activeId, cases, caseStatus, demoStatus, hasDemo, catalogueStatus,
+    controller, state, activeId, cases, caseStatus, demoStatus, demo: visibleDemo, hasDemo, catalogueStatus,
     planCount: session?.list().length ?? 0,
     selectCase,
     loadCatalogue,

@@ -1,0 +1,18 @@
+{
+  "caseId": "case-002",
+  "releaseId": "research-2",
+  "studies": [
+    {
+      "key": "centre",
+      "angleDeg": 0,
+      "remainingMl": 322.51190185546875,
+      "flrPercent": 23.72026558261641
+    },
+    {
+      "key": "tilted",
+      "angleDeg": 35,
+      "remainingMl": 215.97940063476562,
+      "flrPercent": 15.884960257146805
+    }
+  ]
+}

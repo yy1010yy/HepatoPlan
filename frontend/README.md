@@ -1,6 +1,6 @@
 # HepatoPlan frontend
 
-The production interface uses React and TypeScript with Vite. The app root owns the prepared-case controller and plan session across Landing and Plan. The TypeScript planning engine manages case loading and hands volumetry to a module worker. Three.js provides the geometry tools and the renderer used by the browser-engine fixture. The production viewport currently shows load status and mesh extent, with viewer mounting scheduled for FT-05.
+The production interface uses React and TypeScript with Vite. The app root owns the prepared-case controller and plan session across Landing and Plan. The TypeScript planning engine manages case loading and hands volumetry to a module worker. Both the app and the browser-engine fixture use the Three.js renderer.
 
 Run these commands from `frontend/` with Node.js 24.12 or newer.
 
@@ -9,7 +9,20 @@ npm.cmd ci
 npm.cmd run dev
 ```
 
-Open the local URL printed by Vite. **Explore HepatoPlan** opens Plan with the prepared demo, `case-002`. The workspace header opens the case chooser. The initial cut produces live worker readings. The framed viewport reports whether the liver and tumour meshes loaded.
+Open the local URL printed by Vite. The landing preview rotates the prepared demo, `case-002`. **Explore HepatoPlan** opens the same case in Plan, where you can orbit, pan and zoom. Focus the model to use arrow keys for orbit, Shift plus arrow keys for pan, and + or − for zoom. The workspace header opens the case chooser. The initial cut produces live worker readings, which stay available if the 3D view needs a retry.
+
+**Try a CT upload** previews the local file picker and opens the prepared demo. The app displays the filename only while the dialog is open. Plan provides geometric presets, live plane and display controls, and measurements for the current cut. Named plan snapshots are scheduled for FT-10.
+
+## Regenerate the landing studies
+
+After staging a new prepared release, run from `frontend/`:
+
+```powershell
+$env:PLAYWRIGHT_CHANNEL = 'chrome'
+node scripts/capture-studies.mjs
+```
+
+The script opens the staged `case-002` in Chromium, captures the centre and +35° cuts with the same camera, and writes the images and full-precision readings together under `src/assets/studies/`. Review both images and run the production browser suite to check that the displayed values match the live demo.
 
 ## Build and preview
 

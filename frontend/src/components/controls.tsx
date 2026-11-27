@@ -14,10 +14,12 @@ export function Status({ id, children, statusRef, hidden }: {
     hidden={hidden}>{children}</p>
 }
 
-export function LabelledRange({ id, label, ...props }: ComponentProps<'input'> & { id: string; label: string }) {
+export function LabelledRange({ id, label, readout, ...props }: ComponentProps<'input'> & {
+  id: string; label: string; readout?: string
+}) {
   return (
     <div className="range-field">
-      <label htmlFor={id}>{label}</label>
+      <div className="range-label"><label htmlFor={id}>{label}</label><span aria-hidden="true">{readout}</span></div>
       <input id={id} type="range" {...props} />
     </div>
   )

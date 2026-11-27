@@ -32,16 +32,26 @@ export function volumeFormatter(locale = 'en') {
   return (ml: number) => `${volume.format(ml)} mL`
 }
 
+export const measurementLabels = {
+  total: 'Total liver parenchyma',
+  removed: 'Removed volume',
+  remaining: 'Remaining volume',
+  flr: 'Future Liver Remnant (FLR)',
+  resected: 'Resected percentage',
+  intersection: 'Tumour intersection',
+  distance: 'Tumour-to-plane distance (geometric estimate)',
+}
+
 export function measurementRows(result: VolumetryResult, locale = 'en', includeTotal = true) {
   const volume = volumeFormatter(locale)
   const other = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 })
   return [
-      ...(includeTotal ? [{ label: 'Total liver parenchyma', value: volume(result.totalParenchymaMl) }] : []),
-      { label: 'Removed volume', value: volume(result.resectedMl) },
-      { label: 'Remaining volume', value: volume(result.remainingMl) },
-      { label: 'Future Liver Remnant (FLR)', value: `${other.format(result.flrPercent)}%` },
-      { label: 'Resected percentage', value: `${other.format(result.resectedPercent)}%` },
-      { label: 'Tumour intersection', value: result.tumourIntersectsPlane ? 'Touches or crosses' : 'Separate' },
-      { label: 'Tumour-to-plane distance (geometric estimate)', value: `${other.format(result.tumourPlaneDistanceMm)} mm` },
+      ...(includeTotal ? [{ label: measurementLabels.total, value: volume(result.totalParenchymaMl) }] : []),
+      { label: measurementLabels.removed, value: volume(result.resectedMl) },
+      { label: measurementLabels.remaining, value: volume(result.remainingMl) },
+      { label: measurementLabels.flr, value: `${other.format(result.flrPercent)}%` },
+      { label: measurementLabels.resected, value: `${other.format(result.resectedPercent)}%` },
+      { label: measurementLabels.intersection, value: result.tumourIntersectsPlane ? 'Touches or crosses' : 'Separate' },
+      { label: measurementLabels.distance, value: `${other.format(result.tumourPlaneDistanceMm)} mm` },
   ]
 }
