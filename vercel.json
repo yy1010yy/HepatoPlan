@@ -6,7 +6,7 @@
   "outputDirectory": "frontend/dist/app",
   "functions": {
     "api/*/explain.ts": {
-      "includeFiles": "public/cases/**/*.json",
+      "includeFiles": "{public/cases/**/*.json,api/{_configured-app,app,gemini}.mts,backend/plan-analysis.mts,frontend/src/{plan-context.ts,planning/*.ts}}",
       "maxDuration": 30
     }
   }

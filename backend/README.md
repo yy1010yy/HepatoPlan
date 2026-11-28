@@ -169,7 +169,7 @@ Set `HEPATOPLAN_RESEARCH_PUBLIC_DIR` from `frontend/` to override the prepared *
 
 ## Deploy the demo and analysis on Vercel
 
-Import the repository as one Vercel project with the repository root as the Root Directory. The checked-in `vercel.json` uses the Other preset, installs both Node workspaces with `npm ci`, and serves the Vite build from `frontend/dist/app` at the domain root. The two files under `api/*/explain.ts` are the Vercel function entry points. They use the same app and validation as the local server.
+Import the repository as one Vercel project with the repository root as the Root Directory. The checked-in `vercel.json` uses the Other preset, installs both Node workspaces with `npm ci`, and serves the Vite build from `frontend/dist/app` at the domain root. The two files under `api/*/explain.ts` are the Vercel function entry points. Vercel bundles the shared TypeScript source alongside the compiled entry points, so Node can load the source extensions used by the existing API. Both functions use the same app and validation as the local server.
 
 Set `GEMINI_API_KEY` as a sensitive variable for the environment being deployed. `GEMINI_MODEL` is optional. After deploying, open the demo on the deployed origin, run **Analyse this plan**, then save two cuts and run **Analyse comparison**. Both actions should show an AI recommendation.
 
