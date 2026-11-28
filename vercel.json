@@ -4,6 +4,12 @@
   "installCommand": "npm ci",
   "buildCommand": "npm --prefix frontend run build -- --base=/",
   "outputDirectory": "frontend/dist/app",
+  "rewrites": [
+    {
+      "source": "/((?!(?:api|assets|cases)(?:/|$))[^.]*)",
+      "destination": "/index.html"
+    }
+  ],
   "functions": {
     "api/*/explain.ts": {
       "includeFiles": "{public/cases/**/*.json,api/{_configured-app,app,gemini}.mts,backend/plan-analysis.mts,frontend/src/{plan-context.ts,planning/*.ts}}",
